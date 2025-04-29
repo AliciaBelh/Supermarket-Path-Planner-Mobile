@@ -10,8 +10,8 @@ import {
 } from "react-native";
 import { Amplify } from "aws-amplify";
 import { Authenticator, useAuthenticator } from "@aws-amplify/ui-react-native";
-import outputs from "../amplify_outputs.json";
-import SupermarketList from "../components/SupermarketList";
+import outputs from "./amplify_outputs.json";
+import SupermarketList from "../components/SupermarketNavigator";
 
 Amplify.configure(outputs);
 

@@ -1,3 +1,4 @@
+// app/components/SupermarketList.tsx
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -12,25 +13,9 @@ import {
   Dimensions,
 } from "react-native";
 import { generateClient } from "aws-amplify/api";
+import { Supermarket, Square, AmplifyClient } from "../../types";
 import { useAuthenticator } from "@aws-amplify/ui-react-native";
 
-// Define types based on your web app structure
-interface Square {
-  type: "empty" | "products" | "cash_register" | "entrance" | "exit";
-  productIds: string[];
-  row: number;
-  col: number;
-}
-
-interface Supermarket {
-  id: string;
-  name: string;
-  address?: string;
-  owner: string;
-  layout: string; // JSON string of Square[][]
-  createdAt?: string;
-  updatedAt?: string;
-}
 
 // Create a responsive square size based on screen width
 const { width } = Dimensions.get("window");
@@ -47,7 +32,7 @@ const SupermarketList = () => {
   const [modalVisible, setModalVisible] = useState(false);
 
   // Generate the API client
-  const client = generateClient();
+  const client = generateClient() as unknown as AmplifyClient;
 
   useEffect(() => {
     fetchSupermarkets();

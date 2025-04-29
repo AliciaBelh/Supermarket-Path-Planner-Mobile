@@ -1,13 +1,19 @@
 {
   "auth": {
-    "user_pool_id": "us-east-1_ez0BYJ2MS",
+    "user_pool_id": "us-east-1_YaPXIGpB1",
     "aws_region": "us-east-1",
-    "user_pool_client_id": "52cl0deo488qhfkuvl58i9vs9b",
-    "identity_pool_id": "us-east-1:7fedeb63-40f2-4403-bae9-59ac5eda176d",
+    "user_pool_client_id": "39kr9f4t8mkk3ur8oogmh4q9lt",
+    "identity_pool_id": "us-east-1:5828dbc1-9e3c-4ff1-a812-a1c36ec8c632",
     "mfa_methods": [],
-    "standard_required_attributes": ["email"],
-    "username_attributes": ["email"],
-    "user_verification_types": ["email"],
+    "standard_required_attributes": [
+      "email"
+    ],
+    "username_attributes": [
+      "email"
+    ],
+    "user_verification_types": [
+      "email"
+    ],
     "mfa_configuration": "NONE",
     "password_policy": {
       "min_length": 8,
@@ -19,11 +25,14 @@
     "unauthenticated_identities_enabled": true
   },
   "data": {
-    "url": "https://hhpxqjyk6vdzdoydowjgukoxv4.appsync-api.us-east-1.amazonaws.com/graphql",
+    "url": "https://zfd4ud6t2zeanacsffs4omi3wy.appsync-api.us-east-1.amazonaws.com/graphql",
     "aws_region": "us-east-1",
-    "api_key": "da2-jboyukizlrcapok5vgra56lh6e",
+    "api_key": "da2-ncprkxtfjjf7rbqjolhv3ydig4",
     "default_authorization_type": "AMAZON_COGNITO_USER_POOLS",
-    "authorization_types": ["API_KEY", "AWS_IAM"],
+    "authorization_types": [
+      "API_KEY",
+      "AWS_IAM"
+    ],
     "model_introspection": {
       "version": 1,
       "models": {
@@ -76,7 +85,9 @@
               "isArrayNullable": true,
               "association": {
                 "connectionType": "HAS_MANY",
-                "associatedWith": ["supermarketID"]
+                "associatedWith": [
+                  "supermarketID"
+                ]
               }
             },
             "createdAt": {
@@ -112,11 +123,12 @@
                     "ownerField": "owner",
                     "allow": "owner",
                     "identityClaim": "cognito:username",
-                    "operations": ["create", "update", "delete", "read"]
-                  },
-                  {
-                    "allow": "private",
-                    "operations": ["read"]
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
                   }
                 ]
               }
@@ -190,7 +202,9 @@
               "attributes": [],
               "association": {
                 "connectionType": "BELONGS_TO",
-                "targetNames": ["supermarketID"]
+                "targetNames": [
+                  "supermarketID"
+                ]
               }
             },
             "createdAt": {
@@ -226,7 +240,12 @@
                     "ownerField": "owner",
                     "allow": "owner",
                     "identityClaim": "cognito:username",
-                    "operations": ["create", "update", "delete", "read"]
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
                   }
                 ]
               }
@@ -242,6 +261,37 @@
       "enums": {},
       "nonModels": {}
     }
+  },
+  "storage": {
+    "aws_region": "us-east-1",
+    "bucket_name": "amplify-amplifyvitereactt-productimagesbucketf9909-5pi99lngtffr",
+    "buckets": [
+      {
+        "name": "productImages",
+        "bucket_name": "amplify-amplifyvitereactt-productimagesbucketf9909-5pi99lngtffr",
+        "aws_region": "us-east-1",
+        "paths": {
+          "profile-pictures/*": {
+            "guest": [
+              "get",
+              "list"
+            ],
+            "authenticated": [
+              "get",
+              "list"
+            ]
+          },
+          "profile-pictures/${cognito-identity.amazonaws.com:sub}/*": {
+            "entityidentity": [
+              "get",
+              "list",
+              "write",
+              "delete"
+            ]
+          }
+        }
+      }
+    ]
   },
   "version": "1.2"
 }
