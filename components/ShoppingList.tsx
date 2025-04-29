@@ -62,7 +62,7 @@ const ShoppingList = ({
                 return;
             }
 
-            // Fetch the supermarket - now TypeScript knows supermarketId is not undefined
+
             const supermarketResponse = await client.models.Supermarket.get({
                 id: supermarketId,
             });

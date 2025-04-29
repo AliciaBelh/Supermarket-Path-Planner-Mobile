@@ -1,4 +1,4 @@
-// app/components/SupermarketList.tsx
+// app/components/SupermarketLayoutViewer.tsx
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -11,11 +11,14 @@ import {
   SafeAreaView,
   ScrollView,
   Dimensions,
+  Image,
+  Platform,
 } from "react-native";
 import { generateClient } from "aws-amplify/api";
 import { Supermarket, Square, AmplifyClient } from "../../types";
 import { useAuthenticator } from "@aws-amplify/ui-react-native";
-
+import { Ionicons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
 
 // Create a responsive square size based on screen width
 const { width } = Dimensions.get("window");
@@ -35,6 +38,7 @@ const SupermarketList = () => {
   const client = generateClient() as unknown as AmplifyClient;
 
   useEffect(() => {
+    console.log("test");
     fetchSupermarkets();
   }, []);
 
@@ -116,22 +120,44 @@ const SupermarketList = () => {
     );
   };
 
+  const renderLegendItem = (type: Square["type"], label: string) => (
+    <View style={styles.legendRow}>
+      <View
+        style={[
+          styles.legendSquare,
+          { backgroundColor: getSquareColor(type) },
+        ]}
+      />
+      <Text style={styles.legendText}>{label}</Text>
+    </View>
+  );
+
   const renderItem = ({ item }: { item: Supermarket }) => (
     <TouchableOpacity
       style={styles.supermarketItem}
       onPress={() => handleSupermarketSelect(item)}
+      activeOpacity={0.7}
     >
-      <Text style={styles.supermarketName}>{item.name}</Text>
-      {item.address && (
-        <Text style={styles.supermarketAddress}>{item.address}</Text>
-      )}
+      <View style={styles.supermarketIconContainer}>
+        <Ionicons name="storefront-outline" size={28} color="#2E7D32" />
+      </View>
+      <View style={styles.supermarketContent}>
+        <Text style={styles.supermarketName}>{item.name}</Text>
+        {item.address && (
+          <View style={styles.addressContainer}>
+            <Ionicons name="location-outline" size={14} color="#757575" style={styles.addressIcon} />
+            <Text style={styles.supermarketAddress}>{item.address}</Text>
+          </View>
+        )}
+      </View>
+      <Ionicons name="chevron-forward" size={20} color="#9E9E9E" />
     </TouchableOpacity>
   );
 
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#0000ff" />
+        <ActivityIndicator size="large" color="#2E7D32" />
         <Text style={styles.loadingText}>Loading supermarkets...</Text>
       </View>
     );
@@ -140,6 +166,7 @@ const SupermarketList = () => {
   if (error) {
     return (
       <View style={styles.centered}>
+        <Ionicons name="alert-circle-outline" size={48} color="#d32f2f" style={styles.errorIcon} />
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity
           style={styles.retryButton}
@@ -153,11 +180,17 @@ const SupermarketList = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Supermarkets</Text>
+      <Text style={styles.header}>Available Supermarkets</Text>
 
       {supermarkets.length === 0 ? (
         <View style={styles.emptyState}>
+          <Ionicons name="cart-outline" size={64} color="#BDBDBD" style={styles.emptyIcon} />
           <Text style={styles.emptyStateText}>No supermarkets found</Text>
+          <Text style={styles.emptyStateSubtext}>Check back later or try reloading</Text>
+          <TouchableOpacity style={styles.reloadButton} onPress={fetchSupermarkets}>
+            <Ionicons name="refresh-outline" size={20} color="#2E7D32" />
+            <Text style={styles.reloadButtonText}>Reload</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
@@ -165,78 +198,56 @@ const SupermarketList = () => {
           renderItem={renderItem}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
         />
       )}
 
       <Modal
         animationType="slide"
-        transparent={false}
+        transparent={true}
         visible={modalVisible}
         onRequestClose={() => setModalVisible(false)}
       >
         <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{selectedSupermarket?.name}</Text>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setModalVisible(false)}
-            >
-              <Text style={styles.closeButtonText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.modalContent}>
-            <ScrollView horizontal>{renderLayout()}</ScrollView>
-
-            <View style={styles.legendContainer}>
-              <Text style={styles.legendTitle}>Legend:</Text>
-              <View style={styles.legendRow}>
-                <View
-                  style={[
-                    styles.legendSquare,
-                    { backgroundColor: getSquareColor("empty") },
-                  ]}
-                />
-                <Text style={styles.legendText}>Empty</Text>
+          <BlurView intensity={50} style={StyleSheet.absoluteFill} tint="light" />
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleContainer}>
+                <Ionicons name="map-outline" size={24} color="#2E7D32" style={styles.modalIcon} />
+                <Text style={styles.modalTitle}>{selectedSupermarket?.name}</Text>
               </View>
-              <View style={styles.legendRow}>
-                <View
-                  style={[
-                    styles.legendSquare,
-                    { backgroundColor: getSquareColor("products") },
-                  ]}
-                />
-                <Text style={styles.legendText}>Products</Text>
-              </View>
-              <View style={styles.legendRow}>
-                <View
-                  style={[
-                    styles.legendSquare,
-                    { backgroundColor: getSquareColor("cash_register") },
-                  ]}
-                />
-                <Text style={styles.legendText}>Cash Register</Text>
-              </View>
-              <View style={styles.legendRow}>
-                <View
-                  style={[
-                    styles.legendSquare,
-                    { backgroundColor: getSquareColor("entrance") },
-                  ]}
-                />
-                <Text style={styles.legendText}>Entrance</Text>
-              </View>
-              <View style={styles.legendRow}>
-                <View
-                  style={[
-                    styles.legendSquare,
-                    { backgroundColor: getSquareColor("exit") },
-                  ]}
-                />
-                <Text style={styles.legendText}>Exit</Text>
-              </View>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setModalVisible(false)}
+              >
+                <Ionicons name="close-circle" size={28} color="#757575" />
+              </TouchableOpacity>
             </View>
-          </ScrollView>
+
+            <View style={styles.layoutHeaderContainer}>
+              <Text style={styles.layoutHeaderText}>Store Layout</Text>
+              <Text style={styles.layoutSubheaderText}>
+                Swipe to navigate the entire store map
+              </Text>
+            </View>
+
+            <ScrollView style={styles.modalScrollContent}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {renderLayout()}
+              </ScrollView>
+
+              <View style={styles.legendContainer}>
+                <Text style={styles.legendTitle}>Legend</Text>
+                <View style={styles.legendGrid}>
+                  {renderLegendItem("empty", "Empty Space")}
+                  {renderLegendItem("products", "Products")}
+                  {renderLegendItem("cash_register", "Cash Register")}
+                  {renderLegendItem("entrance", "Entrance")}
+                  {renderLegendItem("exit", "Exit")}
+                </View>
+              </View>
+            </ScrollView>
+          </View>
         </SafeAreaView>
       </Modal>
     </View>
@@ -247,7 +258,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#f9f9f9",
   },
   centered: {
     flex: 1,
@@ -256,10 +267,11 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   header: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "bold",
     marginBottom: 16,
     color: "#333",
+    marginLeft: 4,
   },
   listContainer: {
     paddingBottom: 20,
@@ -267,23 +279,44 @@ const styles = StyleSheet.create({
   supermarketItem: {
     backgroundColor: "white",
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 2,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  supermarketIconContainer: {
+    backgroundColor: "#E8F5E9",
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  supermarketContent: {
+    flex: 1,
   },
   supermarketName: {
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "600",
     color: "#333",
+    marginBottom: 4,
+  },
+  addressContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  addressIcon: {
+    marginRight: 4,
   },
   supermarketAddress: {
     fontSize: 14,
-    color: "#666",
-    marginTop: 4,
+    color: "#757575",
   },
   emptyState: {
     flex: 1,
@@ -291,15 +324,42 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 20,
   },
+  emptyIcon: {
+    marginBottom: 16,
+  },
   emptyStateText: {
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: "bold",
     color: "#666",
     textAlign: "center",
+    marginBottom: 8,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: "#9E9E9E",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  reloadButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#E8F5E9",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  reloadButtonText: {
+    color: "#2E7D32",
+    fontWeight: "600",
+    marginLeft: 8,
   },
   loadingText: {
-    marginTop: 10,
+    marginTop: 16,
     fontSize: 16,
-    color: "#666",
+    color: "#757575",
+  },
+  errorIcon: {
+    marginBottom: 12,
   },
   errorText: {
     fontSize: 16,
@@ -309,17 +369,35 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     backgroundColor: "#2196F3",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 4,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
   },
   retryButtonText: {
     color: "white",
-    fontWeight: "bold",
+    fontWeight: "600",
+    fontSize: 16,
   },
   modalContainer: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    justifyContent: "center",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    margin: 20,
+    borderRadius: 20,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    maxHeight: "90%",
   },
   modalHeader: {
     flexDirection: "row",
@@ -327,8 +405,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#ddd",
+    borderBottomColor: "#f0f0f0",
     backgroundColor: "white",
+  },
+  modalTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  modalIcon: {
+    marginRight: 8,
   },
   modalTitle: {
     fontSize: 20,
@@ -336,51 +421,78 @@ const styles = StyleSheet.create({
     color: "#333",
   },
   closeButton: {
-    padding: 8,
+    padding: 4,
   },
-  closeButtonText: {
-    color: "#2196F3",
-    fontWeight: "bold",
+  layoutHeaderContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    backgroundColor: "#f9f9f9",
   },
-  modalContent: {
+  layoutHeaderText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+  },
+  layoutSubheaderText: {
+    fontSize: 14,
+    color: "#757575",
+    marginTop: 4,
+  },
+  modalScrollContent: {
     flex: 1,
-    padding: 16,
   },
   layoutContainer: {
-    padding: 10,
+    margin: 16,
     backgroundColor: "white",
-    borderRadius: 8,
-    marginBottom: 16,
+    borderRadius: 12,
+    padding: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   row: {
     flexDirection: "row",
   },
   square: {
     borderWidth: 0.5,
-    borderColor: "#999",
+    borderColor: "#ffffff",
   },
   legendContainer: {
     backgroundColor: "white",
+    margin: 16,
     padding: 16,
-    borderRadius: 8,
-    marginBottom: 16,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   legendTitle: {
     fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 8,
+    fontWeight: "600",
+    marginBottom: 12,
+    color: "#333",
+  },
+  legendGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
   },
   legendRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginVertical: 4,
+    width: "48%",
+    marginVertical: 8,
   },
   legendSquare: {
-    width: 20,
-    height: 20,
-    borderWidth: 0.5,
-    borderColor: "#999",
-    marginRight: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    marginRight: 12,
   },
   legendText: {
     fontSize: 14,
