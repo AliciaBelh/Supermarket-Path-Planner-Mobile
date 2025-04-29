@@ -1,7 +1,7 @@
 // app/shopping-list/[id].tsx
 import React from "react";
 import { Stack, useLocalSearchParams } from "expo-router";
-import ShoppingList from "../../components/ShoppingList";
+import ShoppingList from "../components/Plan/ShoppingList";
 
 export default function ShoppingListScreen() {
     const { id } = useLocalSearchParams();

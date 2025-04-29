@@ -1,4 +1,4 @@
-// app/components/SupermarketLayoutViewer.tsx
+// app/components/SupermarketList.tsx
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -11,8 +11,6 @@ import {
   SafeAreaView,
   ScrollView,
   Dimensions,
-  Image,
-  Platform,
 } from "react-native";
 import { generateClient } from "aws-amplify/api";
 import { Supermarket, Square, AmplifyClient } from "../../types";
@@ -22,25 +20,32 @@ import { BlurView } from "expo-blur";
 
 // Create a responsive square size based on screen width
 const { width } = Dimensions.get("window");
-const SQUARE_SIZE = Math.floor(width / 20); // Adjust divisor as needed for your layout
+const SQUARE_SIZE = Math.floor(width / 20); // Default size for compact view
+const EXPANDED_SQUARE_SIZE = Math.floor(width / 10); // Larger size for expanded view
 
 const SupermarketList = () => {
   const { user } = useAuthenticator();
   const [supermarkets, setSupermarkets] = useState<Supermarket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedSupermarket, setSelectedSupermarket] =
-    useState<Supermarket | null>(null);
+  const [selectedSupermarket, setSelectedSupermarket] = useState<Supermarket | null>(null);
   const [layoutData, setLayoutData] = useState<Square[][]>([]);
   const [modalVisible, setModalVisible] = useState(false);
+  const [expandedLayoutView, setExpandedLayoutView] = useState(false);
 
   // Generate the API client
   const client = generateClient() as unknown as AmplifyClient;
 
   useEffect(() => {
-    console.log("test");
     fetchSupermarkets();
   }, []);
+
+  // Reset expanded view when modal closes
+  useEffect(() => {
+    if (!modalVisible) {
+      setExpandedLayoutView(false);
+    }
+  }, [modalVisible]);
 
   const fetchSupermarkets = async () => {
     try {
@@ -49,7 +54,6 @@ const SupermarketList = () => {
 
       // Fetch all supermarkets from your DataStore
       const response = await client.models.Supermarket.list();
-      console.log(response.data[0]);
 
       if (response.data) {
         setSupermarkets(response.data);
@@ -77,6 +81,10 @@ const SupermarketList = () => {
     }
   };
 
+  const toggleLayoutView = () => {
+    setExpandedLayoutView(!expandedLayoutView);
+  };
+
   const getSquareColor = (type: Square["type"]) => {
     switch (type) {
       case "products":
@@ -92,7 +100,7 @@ const SupermarketList = () => {
     }
   };
 
-  const renderSquare = (square: Square) => {
+  const renderSquare = (square: Square, currentSquareSize: number) => {
     return (
       <View
         key={`${square.row}-${square.col}`}
@@ -100,20 +108,22 @@ const SupermarketList = () => {
           styles.square,
           {
             backgroundColor: getSquareColor(square.type),
-            width: SQUARE_SIZE,
-            height: SQUARE_SIZE,
+            width: currentSquareSize,
+            height: currentSquareSize,
           },
         ]}
       />
     );
   };
 
-  const renderLayout = () => {
+  const renderLayout = (isExpanded: boolean) => {
+    const currentSquareSize = isExpanded ? EXPANDED_SQUARE_SIZE : SQUARE_SIZE;
+
     return (
       <View style={styles.layoutContainer}>
         {layoutData.map((row, rowIndex) => (
           <View key={`row-${rowIndex}`} style={styles.row}>
-            {row.map((square) => renderSquare(square))}
+            {row.map((square) => renderSquare(square, currentSquareSize))}
           </View>
         ))}
       </View>
@@ -202,6 +212,7 @@ const SupermarketList = () => {
         />
       )}
 
+      {/* Supermarket Layout Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -225,16 +236,52 @@ const SupermarketList = () => {
             </View>
 
             <View style={styles.layoutHeaderContainer}>
-              <Text style={styles.layoutHeaderText}>Store Layout</Text>
+              <View style={styles.layoutHeaderRow}>
+                <Text style={styles.layoutHeaderText}>Store Layout</Text>
+                <TouchableOpacity
+                  style={styles.expandButton}
+                  onPress={toggleLayoutView}
+                >
+                  <Ionicons
+                    name={expandedLayoutView ? "contract-outline" : "expand-outline"}
+                    size={20}
+                    color="#2E7D32"
+                  />
+                  <Text style={styles.expandButtonText}>
+                    {expandedLayoutView ? "Compact View" : "Expand View"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
               <Text style={styles.layoutSubheaderText}>
-                Swipe to navigate the entire store map
+                {expandedLayoutView
+                  ? "Tap 'Compact View' to return to normal size"
+                  : "Tap 'Expand View' to see a larger map"}
               </Text>
             </View>
 
             <ScrollView style={styles.modalScrollContent}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {renderLayout()}
-              </ScrollView>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={toggleLayoutView}
+                style={styles.layoutTouchable}
+              >
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={expandedLayoutView}
+                  contentContainerStyle={expandedLayoutView ? styles.expandedLayoutContent : {}}
+                >
+                  {renderLayout(expandedLayoutView)}
+                </ScrollView>
+
+                {!expandedLayoutView && (
+                  <View style={styles.tapToExpandOverlay}>
+                    <View style={styles.tapToExpandButton}>
+                      <Ionicons name="expand-outline" size={16} color="white" />
+                      <Text style={styles.tapToExpandText}>Tap to expand</Text>
+                    </View>
+                  </View>
+                )}
+              </TouchableOpacity>
 
               <View style={styles.legendContainer}>
                 <Text style={styles.legendTitle}>Legend</Text>
@@ -429,6 +476,11 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     backgroundColor: "#f9f9f9",
   },
+  layoutHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   layoutHeaderText: {
     fontSize: 18,
     fontWeight: "600",
@@ -439,11 +491,28 @@ const styles = StyleSheet.create({
     color: "#757575",
     marginTop: 4,
   },
+  expandButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#E8F5E9",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  expandButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#2E7D32",
+    marginLeft: 4,
+  },
   modalScrollContent: {
     flex: 1,
   },
-  layoutContainer: {
+  layoutTouchable: {
+    position: "relative",
     margin: 16,
+  },
+  layoutContainer: {
     backgroundColor: "white",
     borderRadius: 12,
     padding: 8,
@@ -453,12 +522,36 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
+  expandedLayoutContent: {
+    padding: 8,
+  },
   row: {
     flexDirection: "row",
   },
   square: {
     borderWidth: 0.5,
     borderColor: "#ffffff",
+  },
+  tapToExpandOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 12,
+  },
+  tapToExpandButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(46, 125, 50, 0.9)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  tapToExpandText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 14,
+    marginLeft: 6,
   },
   legendContainer: {
     backgroundColor: "white",
