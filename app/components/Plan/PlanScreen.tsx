@@ -1,22 +1,22 @@
+// components/Plan/PlanScreen.tsx
 import React, { useState, useEffect } from "react";
 import {
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     ActivityIndicator,
     TouchableOpacity,
     FlatList,
     Alert,
-    StatusBar,
-    Image,
 } from "react-native";
 import { generateClient } from "aws-amplify/api";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { Product, Supermarket, AmplifyClient } from "../../../types";
+import { useRouter } from "expo-router";
+import { Supermarket, AmplifyClient } from "../../../types";
+import ScreenLayout from "../ScreenLayout";
 
 const PlanScreen = () => {
+    const router = useRouter();
     const [supermarkets, setSupermarkets] = useState<Supermarket[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -57,7 +57,6 @@ const PlanScreen = () => {
                 {
                     text: "Continue",
                     onPress: () => {
-                        // Navigate to the shopping list screen using the supermarket ID
                         router.push({
                             pathname: "/shopping-list/[id]",
                             params: { id: supermarket.id }
@@ -96,38 +95,18 @@ const PlanScreen = () => {
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
-                <StatusBar barStyle="light-content" backgroundColor="#2E7D32" />
-                <View style={styles.header}>
-                    <View style={styles.logoContainer}>
-                        <Image
-                            source={{ uri: "https://reactnative.dev/img/tiny_logo.png" }}
-                            style={styles.logo}
-                        />
-                        <Text style={styles.headerTitle}>Plan Your Shopping</Text>
-                    </View>
-                </View>
+            <ScreenLayout title="Plan Your Shopping">
                 <View style={styles.centered}>
                     <ActivityIndicator size="large" color="#2E7D32" />
                     <Text style={styles.loadingText}>Loading supermarkets...</Text>
                 </View>
-            </SafeAreaView>
+            </ScreenLayout>
         );
     }
 
     if (error) {
         return (
-            <SafeAreaView style={styles.container}>
-                <StatusBar barStyle="light-content" backgroundColor="#2E7D32" />
-                <View style={styles.header}>
-                    <View style={styles.logoContainer}>
-                        <Image
-                            source={{ uri: "https://reactnative.dev/img/tiny_logo.png" }}
-                            style={styles.logo}
-                        />
-                        <Text style={styles.headerTitle}>Plan Your Shopping</Text>
-                    </View>
-                </View>
+            <ScreenLayout title="Plan Your Shopping">
                 <View style={styles.centered}>
                     <Ionicons name="alert-circle" size={60} color="#d32f2f" />
                     <Text style={styles.errorText}>{error}</Text>
@@ -138,23 +117,12 @@ const PlanScreen = () => {
                         <Text style={styles.retryButtonText}>Retry</Text>
                     </TouchableOpacity>
                 </View>
-            </SafeAreaView>
+            </ScreenLayout>
         );
     }
 
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#2E7D32" />
-            <View style={styles.header}>
-                <View style={styles.logoContainer}>
-                    <Image
-                        source={{ uri: "https://reactnative.dev/img/tiny_logo.png" }}
-                        style={styles.logo}
-                    />
-                    <Text style={styles.headerTitle}>Plan Your Shopping</Text>
-                </View>
-            </View>
-
+        <ScreenLayout title="Plan Your Shopping">
             <View style={styles.content}>
                 <View style={styles.infoCard}>
                     <View style={styles.infoCardHeader}>
@@ -184,41 +152,11 @@ const PlanScreen = () => {
                     />
                 )}
             </View>
-        </SafeAreaView>
+        </ScreenLayout>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: "#f8f9fa",
-    },
-    header: {
-        padding: 16,
-        backgroundColor: "#2E7D32",
-        flexDirection: "row",
-        alignItems: "center",
-        elevation: 4,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 3,
-    },
-    logoContainer: {
-        flexDirection: "row",
-        alignItems: "center",
-    },
-    logo: {
-        width: 28,
-        height: 28,
-        marginRight: 10,
-        tintColor: "white",
-    },
-    headerTitle: {
-        fontSize: 20,
-        fontWeight: "bold",
-        color: "white",
-    },
     content: {
         flex: 1,
         padding: 16,

@@ -1,71 +1,27 @@
+// components/HomeScreen.tsx
 import React from "react";
 import {
     View,
     StyleSheet,
-    SafeAreaView,
     Text,
-    Alert,
     TouchableOpacity,
-    StatusBar,
     Image,
     ImageBackground,
     ScrollView,
 } from "react-native";
-import { useAuthenticator } from "@aws-amplify/ui-react-native";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import ScreenLayout from "./ScreenLayout";
 
 const HomeScreen = () => {
-    const { signOut, user } = useAuthenticator();
+    const router = useRouter();
 
-    const handleSignOut = async () => {
-        try {
-            Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-                {
-                    text: "Cancel",
-                    style: "cancel",
-                },
-                {
-                    text: "Sign Out",
-                    style: "destructive",
-                    onPress: async () => {
-                        try {
-                            console.log("Signing out user:", user?.username);
-                            await signOut();
-                            console.log("User signed out successfully");
-                        } catch (error) {
-                            console.error("Error signing out:", error);
-                            Alert.alert("Error", "Failed to sign out. Please try again.");
-                        }
-                    },
-                },
-            ]);
-        } catch (error) {
-            console.error("Error in handleSignOut:", error);
-        }
+    const navigateToPlan = () => {
+        router.push("/plan");
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#2E7D32" />
-
-            <View style={styles.header}>
-                <View style={styles.logoContainer}>
-                    <Image
-                        source={{ uri: "https://reactnative.dev/img/tiny_logo.png" }}
-                        style={styles.logo}
-                    />
-                    <Text style={styles.headerTitle}>Supermarket Path Planner</Text>
-                </View>
-                <TouchableOpacity
-                    style={styles.signOutButton}
-                    onPress={handleSignOut}
-                    activeOpacity={0.7}
-                >
-                    <Ionicons name="exit-outline" size={16} color="white" style={styles.buttonIcon} />
-                    <Text style={styles.signOutText}>Sign Out</Text>
-                </TouchableOpacity>
-            </View>
-
+        <ScreenLayout title="Supermarket Path Planner">
             <ScrollView style={styles.contentContainer}>
                 <ImageBackground
                     source={{ uri: "https://images.unsplash.com/photo-1579113800032-c38bd7635818?q=80&w=1000&auto=format&fit=crop" }}
@@ -77,10 +33,6 @@ const HomeScreen = () => {
                     <View style={styles.userProfileSection}>
                         <View style={styles.userAvatarContainer}>
                             <Ionicons name="person-circle" size={80} color="#2E7D32" />
-                            <View style={styles.userTextContainer}>
-                                <Text style={styles.welcomeText}>Welcome back,</Text>
-                                <Text style={styles.userName}>{user?.username}</Text>
-                            </View>
                         </View>
                     </View>
                 </ImageBackground>
@@ -109,47 +61,23 @@ const HomeScreen = () => {
                         </Text>
                     </View>
 
-                    <TouchableOpacity style={styles.startPlanningButton}>
+                    <TouchableOpacity
+                        style={styles.startPlanningButton}
+                        onPress={navigateToPlan}
+                    >
                         <Ionicons name="arrow-forward" size={20} color="white" />
                         <Text style={styles.startPlanningText}>Go to Planning</Text>
                     </TouchableOpacity>
                 </View>
             </ScrollView>
-        </SafeAreaView>
+        </ScreenLayout>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
+    contentContainer: {
         flex: 1,
         backgroundColor: "#f8f9fa",
-    },
-    header: {
-        padding: 16,
-        backgroundColor: "#2E7D32", // Dark green header
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        elevation: 4,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 3,
-    },
-    logoContainer: {
-        flexDirection: "row",
-        alignItems: "center",
-    },
-    logo: {
-        width: 28,
-        height: 28,
-        marginRight: 10,
-        tintColor: "white",
-    },
-    headerTitle: {
-        fontSize: 20,
-        fontWeight: "bold",
-        color: "white",
     },
     backgroundImage: {
         width: "100%",
@@ -159,10 +87,6 @@ const styles = StyleSheet.create({
         ...StyleSheet.absoluteFillObject,
         backgroundColor: "rgba(255, 255, 255, 0.85)",
     },
-    contentContainer: {
-        flex: 1,
-        backgroundColor: "#f8f9fa",
-    },
     userProfileSection: {
         paddingVertical: 20,
         paddingHorizontal: 16,
@@ -171,45 +95,6 @@ const styles = StyleSheet.create({
     userAvatarContainer: {
         alignItems: "center",
         marginBottom: 16,
-    },
-    userTextContainer: {
-        alignItems: "center",
-        marginTop: 10,
-    },
-    welcomeText: {
-        fontSize: 14,
-        color: "#616161",
-    },
-    userName: {
-        fontSize: 24,
-        fontWeight: "bold",
-        color: "#2E7D32", // Dark green
-        marginVertical: 5,
-    },
-    userEmail: {
-        fontSize: 14,
-        color: "#666",
-    },
-    signOutButton: {
-        backgroundColor: "#F44336", // Material Design red
-        paddingVertical: 6,
-        paddingHorizontal: 12,
-        borderRadius: 8,
-        elevation: 2,
-        flexDirection: "row",
-        alignItems: "center",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 2,
-    },
-    buttonIcon: {
-        marginRight: 6,
-    },
-    signOutText: {
-        color: "white",
-        fontWeight: "600",
-        fontSize: 14,
     },
     infoSection: {
         padding: 16,
@@ -262,4 +147,5 @@ const styles = StyleSheet.create({
         fontWeight: "bold",
     },
 });
+
 export default HomeScreen;
