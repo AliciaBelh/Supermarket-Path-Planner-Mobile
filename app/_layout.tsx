@@ -26,7 +26,7 @@ export default function RootLayout() {
             <Stack.Screen
               name="shopping-list/[id]"
               options={{
-                headerShown: false,
+                headerShown: false,  // Changed this to false since we'll use our ScreenLayout
                 presentation: 'card'
               }}
             />

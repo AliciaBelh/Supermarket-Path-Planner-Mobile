@@ -7,7 +7,6 @@ import {
     ActivityIndicator,
     TouchableOpacity,
     SectionList,
-    SafeAreaView,
 } from "react-native";
 import { generateClient } from "aws-amplify/api";
 import { Supermarket, Product, Square, ShoppingListProps, AmplifyClient } from "../../../types";
@@ -76,7 +75,6 @@ const ShoppingList = ({
             setLoading(true);
             setError(null);
 
-            // Make sure supermarketId is defined before passing it
             if (!supermarketId) {
                 setError("No supermarket selected");
                 setLoading(false);
@@ -87,35 +85,44 @@ const ShoppingList = ({
                 id: supermarketId,
             });
 
-            if (!supermarketResponse.data) {
-                throw new Error("Supermarket not found");
-            }
+            // console.log("Supermarket Response Full:", JSON.stringify(supermarketResponse, null, 2));
 
-            setSupermarket(supermarketResponse.data);
+            if (supermarketResponse.data) {
+                setSupermarket(supermarketResponse.data);
 
-            // Fetch products
-            const productsResponse = await client.models.Product.list({
-                filter: { supermarketID: { eq: supermarketId } }
-            });
+                // Fetch products for this supermarket
+                const productsResponse = await client.models.Product.list({
+                    filter: { supermarketID: { eq: supermarketId } }
+                });
 
-            if (productsResponse.data) {
-                setProducts(productsResponse.data);
-            }
+                // console.log("Products Response Full:", JSON.stringify(productsResponse, null, 2));
 
-            // Parse the layout JSON string if it exists
-            if (supermarketResponse.data.layout) {
-                try {
-                    const layoutJson = JSON.parse(supermarketResponse.data.layout);
-                    setLayoutData(layoutJson);
-                } catch (parseError) {
-                    console.error("Error parsing layout:", parseError);
-                    setLayoutData([]);
+                if (productsResponse.data && productsResponse.data.length > 0) {
+                    console.log("Products Count:", productsResponse.data.length);
+                    // console.log("Product Details:", JSON.stringify(productsResponse.data, null, 2));
+                    setProducts(productsResponse.data);
+                } else {
+                    console.warn("No products found for this supermarket");
+                    setProducts([]);
                 }
-            }
 
+                // Parse the layout
+                if (supermarketResponse.data.layout) {
+                    try {
+                        const layoutJson = JSON.parse(supermarketResponse.data.layout);
+                        // console.log("Parsed Layout:", JSON.stringify(layoutJson, null, 2));
+                        setLayoutData(layoutJson);
+                    } catch (parseError) {
+                        console.error("Error parsing layout:", parseError);
+                        setLayoutData([]);
+                    }
+                }
+            } else {
+                setError("Supermarket not found");
+            }
         } catch (err) {
-            console.error("Error fetching supermarket data:", err);
-            setError("Failed to load supermarket data. Please try again.");
+            console.error("Detailed Error fetching supermarket data:", err);
+            setError(err instanceof Error ? err.message : "Failed to load supermarket data");
         } finally {
             setLoading(false);
         }
@@ -291,7 +298,7 @@ const ShoppingList = ({
     ];
 
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={styles.container}>
             <SectionList
                 sections={sections}
                 keyExtractor={(item, index) => item + index}
@@ -299,7 +306,7 @@ const ShoppingList = ({
                 stickySectionHeadersEnabled={false}
                 contentContainerStyle={styles.sectionListContent}
             />
-        </SafeAreaView>
+        </View>
     );
 };
 

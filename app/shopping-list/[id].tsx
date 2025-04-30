@@ -1,7 +1,9 @@
 // app/shopping-list/[id].tsx
 import React from "react";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import ShoppingList from "../components/Plan/ShoppingList";
+import ScreenLayout from "../components/ScreenLayout";
+import { Authenticator } from "@aws-amplify/ui-react-native";
 
 export default function ShoppingListScreen() {
     const { id } = useLocalSearchParams();
@@ -11,14 +13,10 @@ export default function ShoppingListScreen() {
     }
 
     return (
-        <>
-            <Stack.Screen
-                options={{
-                    title: "Shopping List",
-                    headerShown: true,
-                }}
-            />
-            <ShoppingList supermarketId={String(id)} />
-        </>
+        <Authenticator.Provider>
+            <ScreenLayout title="Shopping List" showBackButton={true}>
+                <ShoppingList supermarketId={String(id)} />
+            </ScreenLayout>
+        </Authenticator.Provider>
     );
 }
