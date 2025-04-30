@@ -7,7 +7,6 @@ import {
     FlatList,
     TouchableOpacity,
     TextInput,
-    Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Product } from "../../../types";
@@ -139,12 +138,15 @@ const ProductsSection = ({
                 </View>
             ) : (
                 <>
-                    <FlatList
-                        data={paginatedProducts}
-                        renderItem={renderProductItem}
-                        keyExtractor={(item) => item.id}
-                        contentContainerStyle={styles.productsList}
-                    />
+                    <View style={styles.productsListContainer}>
+                        <FlatList
+                            data={paginatedProducts}
+                            renderItem={renderProductItem}
+                            keyExtractor={(item) => item.id}
+                            contentContainerStyle={styles.productsList}
+                            scrollEnabled={false} // Important: Disable scrolling in the inner FlatList
+                        />
+                    </View>
 
                     {/* Pagination controls */}
                     <View style={styles.paginationContainer}>
@@ -301,6 +303,10 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: "#757575",
         textAlign: "center",
+    },
+    productsListContainer: {
+        // Set a fixed height to prevent FlatList from expanding
+        // This avoids the need for the FlatList to be scrollable
     },
     productsList: {
         paddingVertical: 8,

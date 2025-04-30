@@ -6,14 +6,19 @@ import {
     StyleSheet,
     ActivityIndicator,
     TouchableOpacity,
+    SectionList,
+    SafeAreaView,
 } from "react-native";
 import { generateClient } from "aws-amplify/api";
 import { Supermarket, Product, Square, ShoppingListProps, AmplifyClient } from "../../../types";
 import { useLocalSearchParams } from "expo-router";
+import { getCurrentUser } from "aws-amplify/auth";
 
-// Import our separated components
+// Import our components
 import ProductsSection from "./ProductsSection";
 import StoreLayoutSection from "./StoreLayoutSection";
+import ShoppingListManager from "./ShoppingListManager";
+import { Ionicons } from "@expo/vector-icons";
 
 const ShoppingList = ({
     supermarketId: propSupermarketId,
@@ -32,8 +37,29 @@ const ShoppingList = ({
     const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [optimizedPath, setOptimizedPath] = useState<number[][]>([]);
+    const [showOptimizedPath, setShowOptimizedPath] = useState(false);
+    const [currentUser, setCurrentUser] = useState<{ username: string } | null>(null);
 
     const client = generateClient() as unknown as AmplifyClient;
+
+    // Fetch the current authenticated user
+    useEffect(() => {
+        const fetchUser = async () => {
+            try {
+                const userInfo = await getCurrentUser();
+                setCurrentUser({
+                    username: userInfo.username
+                });
+                console.log("Current user loaded:", userInfo.username);
+            } catch (err) {
+                console.log("Not authenticated", err);
+                setCurrentUser(null);
+            }
+        };
+
+        fetchUser();
+    }, []);
 
     useEffect(() => {
         if (supermarketId) {
@@ -67,11 +93,7 @@ const ShoppingList = ({
 
             setSupermarket(supermarketResponse.data);
 
-            // For the example, let's assume we would also fetch products here
-            // and set them in the products state
-            // This is where you would make the actual API call to fetch products
-
-            // For now, let's assume products are fetched here
+            // Fetch products
             const productsResponse = await client.models.Product.list({
                 filter: { supermarketID: { eq: supermarketId } }
             });
@@ -113,10 +135,72 @@ const ShoppingList = ({
         });
     };
 
+    // Handle loading a saved shopping list
+    const handleShoppingListLoaded = (productIds: string[]) => {
+        setSelectedProducts(productIds);
+    };
+
+    // Generate an optimized path (placeholder function)
+    const generateOptimizedPath = () => {
+        // This is a placeholder. In a real implementation, you would:
+        // 1. Find locations of selected products in the layout
+        // 2. Use a pathfinding algorithm to determine the optimal route
+        // 3. Return the path as a series of coordinates
+
+        // Example placeholder implementation:
+        if (layoutData.length === 0 || selectedProducts.length === 0) {
+            return;
+        }
+
+        // Find entrance (starting point)
+        let start: [number, number] | null = null;
+        for (let i = 0; i < layoutData.length; i++) {
+            for (let j = 0; j < layoutData[i].length; j++) {
+                if (layoutData[i][j].type === "entrance") {
+                    start = [i, j];
+                    break;
+                }
+            }
+            if (start) break;
+        }
+
+        if (!start) {
+            console.error("No entrance found in layout");
+            return;
+        }
+
+        // Find product locations
+        const productLocations: [number, number][] = [];
+        for (let i = 0; i < layoutData.length; i++) {
+            for (let j = 0; j < layoutData[i].length; j++) {
+                if (layoutData[i][j].type === "products" &&
+                    layoutData[i][j].productIds.some(id => selectedProducts.includes(id))) {
+                    productLocations.push([i, j]);
+                }
+            }
+        }
+
+        // Simple path: from entrance to each product in the order they appear
+        const simplePath: number[][] = [start, ...productLocations];
+
+        // Find exit (ending point)
+        for (let i = 0; i < layoutData.length; i++) {
+            for (let j = 0; j < layoutData[i].length; j++) {
+                if (layoutData[i][j].type === "exit") {
+                    simplePath.push([i, j]);
+                    break;
+                }
+            }
+        }
+
+        setOptimizedPath(simplePath);
+        setShowOptimizedPath(true);
+    };
+
     if (loading) {
         return (
             <View style={styles.centered}>
-                <ActivityIndicator size="large" color="#0000ff" />
+                <ActivityIndicator size="large" color="#2E7D32" />
                 <Text style={styles.loadingText}>Loading shopping list...</Text>
             </View>
         );
@@ -136,41 +220,96 @@ const ShoppingList = ({
         );
     }
 
-    return (
-        <View style={styles.container}>
-            <View style={styles.headerContainer}>
-                <Text style={styles.header}>{supermarket?.name} Shopping List</Text>
-                {selectedProducts.length > 0 && (
-                    <Text style={styles.subheader}>
-                        {selectedProducts.length} item
-                        {selectedProducts.length !== 1 ? "s" : ""} selected
+    // Prepare data for SectionList
+    const sections = [
+        {
+            title: "header",
+            data: ["header"],
+            renderItem: () => (
+                <View style={styles.headerContainer}>
+                    <Text style={styles.header}>{supermarket?.name} Shopping List</Text>
+                    {selectedProducts.length > 0 && (
+                        <Text style={styles.subheader}>
+                            {selectedProducts.length} item
+                            {selectedProducts.length !== 1 ? "s" : ""} selected
+                        </Text>
+                    )}
+                </View>
+            )
+        },
+        {
+            title: "listManager",
+            data: ["listManager"],
+            renderItem: () => (
+                supermarketId ? (
+                    <ShoppingListManager
+                        supermarketId={supermarketId}
+                        selectedProducts={selectedProducts}
+                        onShoppingListLoaded={handleShoppingListLoaded}
+                        currentUser={currentUser || undefined}
+                    />
+                ) : null
+            )
+        },
+        {
+            title: "pathButton",
+            data: selectedProducts.length > 0 ? ["pathButton"] : [],
+            renderItem: () => (
+                <TouchableOpacity
+                    style={styles.generatePathButton}
+                    onPress={generateOptimizedPath}
+                >
+                    <Ionicons name="map-outline" size={20} color="white" />
+                    <Text style={styles.generatePathButtonText}>
+                        Generate Optimized Path
                     </Text>
-                )}
-            </View>
-
-            <View style={styles.mainContent}>
-                {/* Products section first */}
+                </TouchableOpacity>
+            )
+        },
+        {
+            title: "products",
+            data: ["products"],
+            renderItem: () => (
                 <ProductsSection
                     products={products}
                     selectedProducts={selectedProducts}
                     onProductSelect={toggleProductSelection}
                 />
-
-                {/* Layout section second */}
+            )
+        },
+        {
+            title: "storeLayout",
+            data: ["storeLayout"],
+            renderItem: () => (
                 <StoreLayoutSection
                     layoutData={layoutData}
                     selectedProducts={selectedProducts}
+                    optimizedPath={showOptimizedPath ? optimizedPath : undefined}
                 />
-            </View>
-        </View>
+            )
+        }
+    ];
+
+    return (
+        <SafeAreaView style={styles.container}>
+            <SectionList
+                sections={sections}
+                keyExtractor={(item, index) => item + index}
+                renderSectionHeader={() => null}
+                stickySectionHeadersEnabled={false}
+                contentContainerStyle={styles.sectionListContent}
+            />
+        </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        padding: 16,
         backgroundColor: "#f5f5f5",
+    },
+    sectionListContent: {
+        padding: 16,
     },
     centered: {
         flex: 1,
@@ -206,7 +345,7 @@ const styles = StyleSheet.create({
         marginBottom: 16,
     },
     retryButton: {
-        backgroundColor: "#2196F3",
+        backgroundColor: "#2E7D32",
         paddingHorizontal: 16,
         paddingVertical: 8,
         borderRadius: 4,
@@ -214,6 +353,26 @@ const styles = StyleSheet.create({
     retryButtonText: {
         color: "white",
         fontWeight: "bold",
+    },
+    generatePathButton: {
+        backgroundColor: "#2E7D32",
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 14,
+        borderRadius: 8,
+        marginBottom: 16,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
+        elevation: 3,
+    },
+    generatePathButtonText: {
+        color: "white",
+        fontWeight: "bold",
+        fontSize: 16,
+        marginLeft: 8,
     },
 });
 

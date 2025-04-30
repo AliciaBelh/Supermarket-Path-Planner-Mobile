@@ -14,7 +14,7 @@ import {
 import { generateClient } from "aws-amplify/api";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { Product, Supermarket, AmplifyClient } from "../../types";
+import { Product, Supermarket, AmplifyClient } from "../../../types";
 
 const PlanScreen = () => {
     const [supermarkets, setSupermarkets] = useState<Supermarket[]>([]);

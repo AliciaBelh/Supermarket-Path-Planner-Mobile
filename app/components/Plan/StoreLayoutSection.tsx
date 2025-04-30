@@ -8,10 +8,12 @@ import {
     Dimensions,
 } from "react-native";
 import { Square } from "../../../types";
+import { Ionicons } from "@expo/vector-icons";
 
 interface StoreLayoutSectionProps {
     layoutData: Square[][];
     selectedProducts: string[];
+    optimizedPath?: number[][];
 }
 
 // Create a responsive square size based on screen width
@@ -21,6 +23,7 @@ const SQUARE_SIZE = Math.floor(width / 20); // Adjust as needed
 const StoreLayoutSection = ({
     layoutData,
     selectedProducts,
+    optimizedPath,
 }: StoreLayoutSectionProps) => {
     // Get the square color based on its type
     const getSquareColor = (square: Square) => {
@@ -39,12 +42,28 @@ const StoreLayoutSection = ({
         }
     };
 
+    // Check if a position is part of the path
+    const isPartOfPath = (row: number, col: number): boolean => {
+        if (!optimizedPath) return false;
+        return optimizedPath.some(pos => pos[0] === row && pos[1] === col);
+    };
+
+    // Get the position in the path (for numbering)
+    const getPathPosition = (row: number, col: number): number => {
+        if (!optimizedPath) return -1;
+        return optimizedPath.findIndex(pos => pos[0] === row && pos[1] === col);
+    };
+
     // Render a square in the layout
     const renderSquare = (square: Square, rowIndex: number, colIndex: number) => {
         // Check if this square contains one of our selected products
         const isSelectedProductSquare =
             square.type === "products" &&
             square.productIds.some((id) => selectedProducts.includes(id));
+
+        // Check if this square is part of the optimized path
+        const pathPos = getPathPosition(rowIndex, colIndex);
+        const onPath = pathPos !== -1;
 
         return (
             <View
@@ -60,8 +79,51 @@ const StoreLayoutSection = ({
                         borderColor: isSelectedProductSquare ? "#FF6D00" : "#999",
                     },
                 ]}
-            />
+            >
+                {onPath && (
+                    <View style={styles.pathMarker}>
+                        <Text style={styles.pathMarkerText}>{pathPos + 1}</Text>
+                    </View>
+                )}
+            </View>
         );
+    };
+
+    // Draw a line between consecutive path points
+    const renderPathLines = () => {
+        if (!optimizedPath || optimizedPath.length < 2) return null;
+
+        return optimizedPath.map((point, index) => {
+            if (index === optimizedPath.length - 1) return null; // Skip the last point
+
+            const start = point;
+            const end = optimizedPath[index + 1];
+
+            // Calculate line position and dimensions
+            const startX = start[1] * SQUARE_SIZE + SQUARE_SIZE / 2;
+            const startY = start[0] * SQUARE_SIZE + SQUARE_SIZE / 2;
+            const endX = end[1] * SQUARE_SIZE + SQUARE_SIZE / 2;
+            const endY = end[0] * SQUARE_SIZE + SQUARE_SIZE / 2;
+
+            // Calculate line length and angle
+            const length = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+            const angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
+
+            return (
+                <View
+                    key={`line-${index}`}
+                    style={[
+                        styles.pathLine,
+                        {
+                            width: length,
+                            left: startX,
+                            top: startY,
+                            transform: [{ rotate: `${angle}deg` }, { translateY: -1 }],
+                        },
+                    ]}
+                />
+            );
+        });
     };
 
     // Render the layout
@@ -75,6 +137,9 @@ const StoreLayoutSection = ({
                         )}
                     </View>
                 ))}
+
+                {/* Draw path lines between points */}
+                {optimizedPath && optimizedPath.length > 0 && renderPathLines()}
             </View>
         );
     };
@@ -82,14 +147,21 @@ const StoreLayoutSection = ({
     return (
         <View style={styles.layoutSection}>
             <Text style={styles.sectionTitle}>Store Layout</Text>
-            <ScrollView
-                horizontal
-                contentContainerStyle={styles.layoutScrollContent}
-            >
+
+            {optimizedPath && optimizedPath.length > 0 && (
+                <View style={styles.pathInfoContainer}>
+                    <Ionicons name="map" size={20} color="#2E7D32" />
+                    <Text style={styles.pathInfoText}>
+                        Optimized path generated with {optimizedPath.length} stops
+                    </Text>
+                </View>
+            )}
+
+            <View style={styles.outerScrollContainer}>
                 <ScrollView horizontal>
-                    <ScrollView>{renderLayout()}</ScrollView>
+                    {renderLayout()}
                 </ScrollView>
-            </ScrollView>
+            </View>
 
             <View style={styles.legendContainer}>
                 <Text style={styles.legendTitle}>Legend:</Text>
@@ -124,6 +196,14 @@ const StoreLayoutSection = ({
                         />
                         <Text style={styles.legendText}>Exit</Text>
                     </View>
+                    {optimizedPath && optimizedPath.length > 0 && (
+                        <View style={styles.legendRow}>
+                            <View style={styles.legendPathMarker}>
+                                <Text style={styles.legendPathMarkerText}>1</Text>
+                            </View>
+                            <Text style={styles.legendText}>Path Stop</Text>
+                        </View>
+                    )}
                 </View>
             </View>
         </View>
@@ -141,18 +221,37 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
         elevation: 2,
     },
+    pathInfoContainer: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#E8F5E9",
+        padding: 10,
+        borderRadius: 6,
+        marginBottom: 12,
+    },
+    pathInfoText: {
+        marginLeft: 8,
+        fontSize: 14,
+        color: "#2E7D32",
+        fontWeight: "500",
+    },
     sectionTitle: {
         fontSize: 18,
         fontWeight: "bold",
         marginBottom: 12,
         color: "#333",
     },
-    layoutScrollContent: {
+    outerScrollContainer: {
+        maxHeight: 300, // Set a maximum height to prevent it from taking too much space
+    },
+    layoutScrollContainer: {
         padding: 8,
     },
     layoutContainer: {
         backgroundColor: "white",
         borderRadius: 8,
+        position: "relative", // For positioning path lines
+        padding: 8,
     },
     row: {
         flexDirection: "row",
@@ -160,6 +259,27 @@ const styles = StyleSheet.create({
     square: {
         borderWidth: 0.5,
         borderColor: "#999",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    pathMarker: {
+        width: SQUARE_SIZE * 0.65,
+        height: SQUARE_SIZE * 0.65,
+        borderRadius: SQUARE_SIZE * 0.325,
+        backgroundColor: "rgba(33, 33, 33, 0.8)",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    pathMarkerText: {
+        color: "white",
+        fontSize: SQUARE_SIZE * 0.4,
+        fontWeight: "bold",
+    },
+    pathLine: {
+        height: 2,
+        backgroundColor: "rgba(33, 33, 33, 0.8)",
+        position: "absolute",
+        transformOrigin: "left",
     },
     legendContainer: {
         marginTop: 12,
@@ -189,6 +309,20 @@ const styles = StyleSheet.create({
         borderWidth: 0.5,
         borderColor: "#999",
         marginRight: 8,
+    },
+    legendPathMarker: {
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        backgroundColor: "rgba(33, 33, 33, 0.8)",
+        justifyContent: "center",
+        alignItems: "center",
+        marginRight: 8,
+    },
+    legendPathMarkerText: {
+        color: "white",
+        fontSize: 10,
+        fontWeight: "bold",
     },
     legendText: {
         fontSize: 12,

@@ -30,6 +30,20 @@ export interface Product {
     updatedAt?: string;
 }
 
+export type ShoppingListStatus = 'draft' | 'active' | 'completed';
+
+export interface ShoppingList {
+    id: string;
+    name: string;
+    owner: string;
+    productIDs: string; // JSON string of product IDs
+    supermarketID: string;
+    supermarket?: Supermarket;
+    createdAt?: string;
+    updatedAt?: string;
+    completedAt?: string;
+}
+
 export interface ShoppingListProps {
     supermarketId?: string;
 }
@@ -42,6 +56,13 @@ export interface AmplifyModels {
     };
     Product: {
         list: (args?: any) => Promise<{ data: Product[] }>;
+    };
+    ShoppingList: {
+        create: (args: { input: Omit<ShoppingList, 'id' | 'createdAt' | 'updatedAt'> }) => Promise<{ data: ShoppingList }>;
+        update: (args: { input: Partial<ShoppingList> & { id: string } }) => Promise<{ data: ShoppingList }>;
+        delete: (args: { id: string }) => Promise<{ data: ShoppingList }>;
+        get: (args: { id: string }) => Promise<{ data: ShoppingList | null }>;
+        list: (args?: any) => Promise<{ data: ShoppingList[] }>;
     };
 }
 
