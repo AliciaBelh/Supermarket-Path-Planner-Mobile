@@ -1,5 +1,17 @@
-// types.ts
-// Domain types for your application
+// Updated types.ts with PathData interface
+export interface PathData {
+    // Distance matrix - dist[i][j] is the shortest distance from node i to node j
+    dist: number[][];
+    // Next hop matrix - next[i][j] is the next node on the shortest path from i to j
+    next: number[][];
+    // Metadata about when and how the path data was created
+    metadata: {
+        timestamp: string;
+        rowCount: number;
+        colCount: number;
+    };
+}
+
 export interface Square {
     type: "empty" | "products" | "cash_register" | "entrance" | "exit";
     productIds: string[];
@@ -13,6 +25,7 @@ export interface Supermarket {
     address?: string;
     owner: string;
     layout: string; // JSON string of Square[][]
+    pathData?: string; // Added: JSON string of PathData
     createdAt?: string;
     updatedAt?: string;
 }

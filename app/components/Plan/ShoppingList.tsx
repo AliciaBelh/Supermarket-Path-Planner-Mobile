@@ -9,7 +9,7 @@ import {
     SectionList,
 } from "react-native";
 import { generateClient } from "aws-amplify/api";
-import { Supermarket, Product, Square, ShoppingListProps, AmplifyClient } from "../../../types";
+import { Supermarket, Product, Square, ShoppingListProps, AmplifyClient, PathData } from "../../../types";
 import { useLocalSearchParams } from "expo-router";
 import { getCurrentUser } from "aws-amplify/auth";
 
@@ -39,6 +39,7 @@ const ShoppingList = ({
     const [optimizedPath, setOptimizedPath] = useState<number[][]>([]);
     const [showOptimizedPath, setShowOptimizedPath] = useState(false);
     const [currentUser, setCurrentUser] = useState<{ username: string } | null>(null);
+    const [optimizedPathData, setOptimizedPathData] = useState<PathData | null>(null);
 
     const client = generateClient() as unknown as AmplifyClient;
 
@@ -89,6 +90,7 @@ const ShoppingList = ({
 
             if (supermarketResponse.data) {
                 setSupermarket(supermarketResponse.data);
+                console.log(supermarketResponse.data)
 
                 // Fetch products for this supermarket
                 const productsResponse = await client.models.Product.list({
@@ -116,6 +118,23 @@ const ShoppingList = ({
                         console.error("Error parsing layout:", parseError);
                         setLayoutData([]);
                     }
+                }
+
+                // Parse the pathData if available
+                if (supermarketResponse.data.pathData) {
+                    try {
+                        const pathDataJson = JSON.parse(supermarketResponse.data.pathData);
+                        console.log("Found path data in supermarket:", pathDataJson.metadata?.timestamp || "unknown timestamp");
+
+                        // Store the path data for later use in generateOptimizedPath
+                        setOptimizedPathData(pathDataJson);
+                    } catch (parseError) {
+                        console.error("Error parsing pathData:", parseError);
+                        setOptimizedPathData(null);
+                    }
+                } else {
+                    console.log("No path data available for this supermarket");
+                    setOptimizedPathData(null);
                 }
             } else {
                 setError("Supermarket not found");
@@ -147,61 +166,160 @@ const ShoppingList = ({
         setSelectedProducts(productIds);
     };
 
-    // Generate an optimized path (placeholder function)
+    // Generate an optimized path using precomputed pathData if available
     const generateOptimizedPath = () => {
-        // This is a placeholder. In a real implementation, you would:
-        // 1. Find locations of selected products in the layout
-        // 2. Use a pathfinding algorithm to determine the optimal route
-        // 3. Return the path as a series of coordinates
-
-        // Example placeholder implementation:
         if (layoutData.length === 0 || selectedProducts.length === 0) {
             return;
         }
 
-        // Find entrance (starting point)
-        let start: [number, number] | null = null;
-        for (let i = 0; i < layoutData.length; i++) {
-            for (let j = 0; j < layoutData[i].length; j++) {
-                if (layoutData[i][j].type === "entrance") {
-                    start = [i, j];
-                    break;
+        // If we have precomputed path data, use it for optimal routing
+        if (optimizedPathData && optimizedPathData.dist && optimizedPathData.next) {
+            // Find entrance (starting point)
+            let startIndex: number | null = null;
+
+            // Find product locations
+            const productIndices: number[] = [];
+            const cols = layoutData[0].length;
+
+            // Map 2D coordinates to 1D indices for using with the path data
+            for (let i = 0; i < layoutData.length; i++) {
+                for (let j = 0; j < layoutData[i].length; j++) {
+                    const squareIndex = i * cols + j;
+
+                    // Find entrance
+                    if (layoutData[i][j].type === "entrance") {
+                        startIndex = squareIndex;
+                    }
+
+                    // Find product locations that match our selected products
+                    if (layoutData[i][j].type === "products" &&
+                        layoutData[i][j].productIds.some(id => selectedProducts.includes(id))) {
+                        productIndices.push(squareIndex);
+                    }
                 }
             }
-            if (start) break;
-        }
 
-        if (!start) {
-            console.error("No entrance found in layout");
-            return;
-        }
+            if (startIndex === null) {
+                console.error("No entrance found in layout");
+                return;
+            }
 
-        // Find product locations
-        const productLocations: [number, number][] = [];
-        for (let i = 0; i < layoutData.length; i++) {
-            for (let j = 0; j < layoutData[i].length; j++) {
-                if (layoutData[i][j].type === "products" &&
-                    layoutData[i][j].productIds.some(id => selectedProducts.includes(id))) {
-                    productLocations.push([i, j]);
+            // Use the Floyd-Warshall next matrix to reconstruct the optimal path
+            // This is a traveling salesman problem approximation using a greedy approach
+            let currentIndex = startIndex;
+            const path: number[] = [currentIndex];
+
+            // Visit each product location in order of closest next destination
+            while (productIndices.length > 0) {
+                // Find closest unvisited product location
+                let closestIndex = -1;
+                let shortestDist = Infinity;
+
+                for (let i = 0; i < productIndices.length; i++) {
+                    const dist = optimizedPathData.dist[currentIndex][productIndices[i]];
+                    if (dist < shortestDist) {
+                        shortestDist = dist;
+                        closestIndex = i;
+                    }
+                }
+
+                if (closestIndex === -1) break; // No reachable products left
+
+                // Get the next destination
+                const nextIndex = productIndices[closestIndex];
+                productIndices.splice(closestIndex, 1); // Remove from unvisited
+
+                // Reconstruct path from current to next using the Floyd-Warshall next matrix
+                let step = currentIndex;
+                while (step !== nextIndex) {
+                    step = optimizedPathData.next[step][nextIndex];
+                    if (step === -1) break; // No path found
+                    path.push(step);
+                }
+
+                currentIndex = nextIndex;
+            }
+
+            // Find exit (ending point)
+            let exitIndex: number | null = null;
+            for (let i = 0; i < layoutData.length; i++) {
+                for (let j = 0; j < layoutData[i].length; j++) {
+                    if (layoutData[i][j].type === "exit") {
+                        exitIndex = i * cols + j;
+                        break;
+                    }
+                }
+                if (exitIndex !== null) break;
+            }
+
+            // Add path to exit if found
+            if (exitIndex !== null) {
+                let step = currentIndex;
+                while (step !== exitIndex) {
+                    step = optimizedPathData.next[step][exitIndex];
+                    if (step === -1) break; // No path found
+                    path.push(step);
                 }
             }
-        }
 
-        // Simple path: from entrance to each product in the order they appear
-        const simplePath: number[][] = [start, ...productLocations];
+            // Convert 1D indices back to 2D coordinates for display
+            const pathCoordinates = path.map(index => {
+                const row = Math.floor(index / cols);
+                const col = index % cols;
+                return [row, col];
+            });
 
-        // Find exit (ending point)
-        for (let i = 0; i < layoutData.length; i++) {
-            for (let j = 0; j < layoutData[i].length; j++) {
-                if (layoutData[i][j].type === "exit") {
-                    simplePath.push([i, j]);
-                    break;
+            setOptimizedPath(pathCoordinates);
+            setShowOptimizedPath(true);
+            console.log("Generated optimized path using precomputed path data");
+        } else {
+            // Fall back to the existing simple path generation
+            console.log("No precomputed path data available, using simple path");
+
+            // Find entrance (starting point)
+            let start: [number, number] | null = null;
+            for (let i = 0; i < layoutData.length; i++) {
+                for (let j = 0; j < layoutData[i].length; j++) {
+                    if (layoutData[i][j].type === "entrance") {
+                        start = [i, j];
+                        break;
+                    }
+                }
+                if (start) break;
+            }
+
+            if (!start) {
+                console.error("No entrance found in layout");
+                return;
+            }
+
+            // Find product locations
+            const productLocations: [number, number][] = [];
+            for (let i = 0; i < layoutData.length; i++) {
+                for (let j = 0; j < layoutData[i].length; j++) {
+                    if (layoutData[i][j].type === "products" &&
+                        layoutData[i][j].productIds.some(id => selectedProducts.includes(id))) {
+                        productLocations.push([i, j]);
+                    }
                 }
             }
-        }
 
-        setOptimizedPath(simplePath);
-        setShowOptimizedPath(true);
+            // Simple path: from entrance to each product in the order they appear
+            const simplePath: number[][] = [start, ...productLocations];
+
+            // Find exit (ending point)
+            for (let i = 0; i < layoutData.length; i++) {
+                for (let j = 0; j < layoutData[i].length; j++) {
+                    if (layoutData[i][j].type === "exit") {
+                        simplePath.push([i, j]);
+                        break;
+                    }
+                }
+            }
+
+            setOptimizedPath(simplePath);
+            setShowOptimizedPath(true);
+        }
     };
 
     if (loading) {
