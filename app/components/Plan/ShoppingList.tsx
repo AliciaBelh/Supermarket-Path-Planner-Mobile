@@ -18,6 +18,10 @@ import ProductsSection from "./ProductsSection";
 import StoreLayoutSection from "./StoreLayoutSection";
 import ShoppingListManager from "./ShoppingListManager";
 import { Ionicons } from "@expo/vector-icons";
+import { tspHeldKarp } from "../../utils/held_karp_tsp_optimal"
+
+// Helper function to convert 2D coordinates to 1D index
+const toIndex = (row: number, col: number, cols: number): number => row * cols + col;
 
 const ShoppingList = ({
     supermarketId: propSupermarketId,
@@ -82,26 +86,27 @@ const ShoppingList = ({
                 return;
             }
 
-            const supermarketResponse = await client.models.Supermarket.get({
-                id: supermarketId,
+            // Try using list with a filter instead of get to retrieve pathData
+            const supermarketsResponse = await client.models.Supermarket.list({
+                filter: { id: { eq: supermarketId } }
             });
 
-            // console.log("Supermarket Response Full:", JSON.stringify(supermarketResponse, null, 2));
+            const supermarketData = supermarketsResponse.data?.[0];
 
-            if (supermarketResponse.data) {
-                setSupermarket(supermarketResponse.data);
-                console.log(supermarketResponse.data)
+            if (supermarketData) {
+                console.log("Found supermarket via list:", supermarketData.id);
+                console.log("Supermarket properties:", Object.keys(supermarketData));
+                console.log("Raw pathData from list:", supermarketData.pathData);
+
+                setSupermarket(supermarketData);
 
                 // Fetch products for this supermarket
                 const productsResponse = await client.models.Product.list({
                     filter: { supermarketID: { eq: supermarketId } }
                 });
 
-                // console.log("Products Response Full:", JSON.stringify(productsResponse, null, 2));
-
                 if (productsResponse.data && productsResponse.data.length > 0) {
                     console.log("Products Count:", productsResponse.data.length);
-                    // console.log("Product Details:", JSON.stringify(productsResponse.data, null, 2));
                     setProducts(productsResponse.data);
                 } else {
                     console.warn("No products found for this supermarket");
@@ -109,10 +114,13 @@ const ShoppingList = ({
                 }
 
                 // Parse the layout
-                if (supermarketResponse.data.layout) {
+                if (supermarketData.layout) {
                     try {
-                        const layoutJson = JSON.parse(supermarketResponse.data.layout);
-                        // console.log("Parsed Layout:", JSON.stringify(layoutJson, null, 2));
+                        const layoutJson = typeof supermarketData.layout === "string"
+                            ? JSON.parse(supermarketData.layout)
+                            : supermarketData.layout;
+
+                        console.log("Layout parsed successfully");
                         setLayoutData(layoutJson);
                     } catch (parseError) {
                         console.error("Error parsing layout:", parseError);
@@ -120,13 +128,14 @@ const ShoppingList = ({
                     }
                 }
 
-                // Parse the pathData if available
-                if (supermarketResponse.data.pathData) {
+                // Parse pathData if it exists
+                if (supermarketData.pathData) {
                     try {
-                        const pathDataJson = JSON.parse(supermarketResponse.data.pathData);
-                        console.log("Found path data in supermarket:", pathDataJson.metadata?.timestamp || "unknown timestamp");
+                        const pathDataJson = typeof supermarketData.pathData === "string"
+                            ? JSON.parse(supermarketData.pathData)
+                            : supermarketData.pathData;
 
-                        // Store the path data for later use in generateOptimizedPath
+                        console.log("PathData parsed successfully:", pathDataJson.metadata?.timestamp || "no timestamp");
                         setOptimizedPathData(pathDataJson);
                     } catch (parseError) {
                         console.error("Error parsing pathData:", parseError);
@@ -166,7 +175,7 @@ const ShoppingList = ({
         setSelectedProducts(productIds);
     };
 
-    // Generate an optimized path using precomputed pathData if available
+    // Generate an optimized path using precomputed pathData and TSP Held-Karp
     const generateOptimizedPath = () => {
         if (layoutData.length === 0 || selectedProducts.length === 0) {
             return;
@@ -174,118 +183,183 @@ const ShoppingList = ({
 
         // If we have precomputed path data, use it for optimal routing
         if (optimizedPathData && optimizedPathData.dist && optimizedPathData.next) {
-            // Find entrance (starting point)
-            let startIndex: number | null = null;
+            console.log("Using precomputed path data for optimization");
 
-            // Find product locations
-            const productIndices: number[] = [];
             const cols = layoutData[0].length;
 
-            // Map 2D coordinates to 1D indices for using with the path data
+            // Find entrance and cash register
+            let entranceCoord: { row: number; col: number } | undefined;
+            let cashRegisterCoord: { row: number; col: number } | undefined;
+
+            // Find product locations
+            const productCoords: { row: number; col: number }[] = [];
+
+            // Find all relevant locations
             for (let i = 0; i < layoutData.length; i++) {
                 for (let j = 0; j < layoutData[i].length; j++) {
-                    const squareIndex = i * cols + j;
+                    const square = layoutData[i][j];
 
-                    // Find entrance
-                    if (layoutData[i][j].type === "entrance") {
-                        startIndex = squareIndex;
+                    // Track entrance (starting point)
+                    if (square.type === "entrance") {
+                        entranceCoord = { row: i, col: j };
+                    }
+
+                    // Track cash register (ending point)
+                    if (square.type === "cash_register") {
+                        cashRegisterCoord = { row: i, col: j };
                     }
 
                     // Find product locations that match our selected products
-                    if (layoutData[i][j].type === "products" &&
-                        layoutData[i][j].productIds.some(id => selectedProducts.includes(id))) {
-                        productIndices.push(squareIndex);
+                    if (square.type === "products" &&
+                        square.productIds.some(id => selectedProducts.includes(id))) {
+                        productCoords.push({ row: i, col: j });
                     }
                 }
             }
 
-            if (startIndex === null) {
+            if (!entranceCoord) {
                 console.error("No entrance found in layout");
                 return;
             }
 
-            // Use the Floyd-Warshall next matrix to reconstruct the optimal path
-            // This is a traveling salesman problem approximation using a greedy approach
-            let currentIndex = startIndex;
-            const path: number[] = [currentIndex];
-
-            // Visit each product location in order of closest next destination
-            while (productIndices.length > 0) {
-                // Find closest unvisited product location
-                let closestIndex = -1;
-                let shortestDist = Infinity;
-
-                for (let i = 0; i < productIndices.length; i++) {
-                    const dist = optimizedPathData.dist[currentIndex][productIndices[i]];
-                    if (dist < shortestDist) {
-                        shortestDist = dist;
-                        closestIndex = i;
+            if (!cashRegisterCoord) {
+                console.warn("No cash register found in layout, using exit as final destination");
+                // Try to find exit as alternative
+                for (let i = 0; i < layoutData.length; i++) {
+                    for (let j = 0; j < layoutData[i].length; j++) {
+                        if (layoutData[i][j].type === "exit") {
+                            cashRegisterCoord = { row: i, col: j };
+                            break;
+                        }
                     }
+                    if (cashRegisterCoord) break;
                 }
-
-                if (closestIndex === -1) break; // No reachable products left
-
-                // Get the next destination
-                const nextIndex = productIndices[closestIndex];
-                productIndices.splice(closestIndex, 1); // Remove from unvisited
-
-                // Reconstruct path from current to next using the Floyd-Warshall next matrix
-                let step = currentIndex;
-                while (step !== nextIndex) {
-                    step = optimizedPathData.next[step][nextIndex];
-                    if (step === -1) break; // No path found
-                    path.push(step);
-                }
-
-                currentIndex = nextIndex;
             }
 
-            // Find exit (ending point)
-            let exitIndex: number | null = null;
-            for (let i = 0; i < layoutData.length; i++) {
-                for (let j = 0; j < layoutData[i].length; j++) {
-                    if (layoutData[i][j].type === "exit") {
-                        exitIndex = i * cols + j;
+            // If we found no product squares matching selected products
+            if (productCoords.length === 0) {
+                console.warn("No product squares found for selected products");
+                // Create a simple path from entrance to cash register
+                const pathCoordinates: number[][] = [];
+
+                if (entranceCoord) {
+                    pathCoordinates.push([entranceCoord.row, entranceCoord.col]);
+                }
+
+                if (cashRegisterCoord) {
+                    pathCoordinates.push([cashRegisterCoord.row, cashRegisterCoord.col]);
+                }
+
+                setOptimizedPath(pathCoordinates);
+                setShowOptimizedPath(true);
+                return;
+            }
+
+            // Use Held-Karp to find the optimal order of products to visit
+            console.log("Finding optimal product visit order with Held-Karp TSP algorithm");
+            const optimalProductOrder = tspHeldKarp(
+                productCoords,
+                optimizedPathData.dist,
+                cols,
+                entranceCoord
+            );
+
+            console.log("Optimal product order found:", optimalProductOrder);
+
+            // Reconstruct the full path using the Floyd-Warshall next matrix
+            const fullPath: number[][] = [];
+
+            // Start with entrance
+            if (entranceCoord) {
+                fullPath.push([entranceCoord.row, entranceCoord.col]);
+            }
+
+            // For each segment between points in our optimal order
+            for (let i = 0; i < optimalProductOrder.length - 1; i++) {
+                const from = optimalProductOrder[i];
+                const to = optimalProductOrder[i + 1];
+
+                const fromIndex = toIndex(from.row, from.col, cols);
+                const toSquareIndex = toIndex(to.row, to.col, cols);
+
+                // Get the detailed path between these two points using the next matrix
+                let currentIndex = fromIndex;
+
+                while (currentIndex !== toSquareIndex) {
+                    // Get the next step in the path
+                    const nextIndex = optimizedPathData.next[currentIndex][toSquareIndex];
+
+                    // If no path exists
+                    if (nextIndex === -1 || nextIndex === undefined) {
+                        console.error(`No path found from ${currentIndex} to ${toIndex}`);
                         break;
                     }
+
+                    // Convert index back to coordinates
+                    const nextRow = Math.floor(nextIndex / cols);
+                    const nextCol = nextIndex % cols;
+
+                    // Add to our path
+                    fullPath.push([nextRow, nextCol]);
+
+                    // Move to next step
+                    currentIndex = nextIndex;
                 }
-                if (exitIndex !== null) break;
             }
 
-            // Add path to exit if found
-            if (exitIndex !== null) {
-                let step = currentIndex;
-                while (step !== exitIndex) {
-                    step = optimizedPathData.next[step][exitIndex];
-                    if (step === -1) break; // No path found
-                    path.push(step);
+            // Add path to cash register if found
+            if (cashRegisterCoord) {
+                const lastProductIndex = toIndex(
+                    optimalProductOrder[optimalProductOrder.length - 1].row,
+                    optimalProductOrder[optimalProductOrder.length - 1].col,
+                    cols
+                );
+                const cashRegisterIndex = toIndex(cashRegisterCoord.row, cashRegisterCoord.col, cols);
+
+                let currentIndex = lastProductIndex;
+
+                while (currentIndex !== cashRegisterIndex) {
+                    // Get the next step in the path
+                    const nextIndex = optimizedPathData.next[currentIndex][cashRegisterIndex];
+
+                    // If no path exists
+                    if (nextIndex === -1 || nextIndex === undefined) {
+                        console.error(`No path found from last product to cash register`);
+                        break;
+                    }
+
+                    // Convert index back to coordinates
+                    const nextRow = Math.floor(nextIndex / cols);
+                    const nextCol = nextIndex % cols;
+
+                    // Add to our path
+                    fullPath.push([nextRow, nextCol]);
+
+                    // Move to next step
+                    currentIndex = nextIndex;
                 }
             }
 
-            // Convert 1D indices back to 2D coordinates for display
-            const pathCoordinates = path.map(index => {
-                const row = Math.floor(index / cols);
-                const col = index % cols;
-                return [row, col];
-            });
-
-            setOptimizedPath(pathCoordinates);
+            setOptimizedPath(fullPath);
             setShowOptimizedPath(true);
-            console.log("Generated optimized path using precomputed path data");
+            console.log("Generated optimized path with", fullPath.length, "steps");
         } else {
             // Fall back to the existing simple path generation
             console.log("No precomputed path data available, using simple path");
 
             // Find entrance (starting point)
             let start: [number, number] | null = null;
+            let cashRegister: [number, number] | null = null;
+
             for (let i = 0; i < layoutData.length; i++) {
                 for (let j = 0; j < layoutData[i].length; j++) {
                     if (layoutData[i][j].type === "entrance") {
                         start = [i, j];
-                        break;
+                    }
+                    if (layoutData[i][j].type === "cash_register") {
+                        cashRegister = [i, j];
                     }
                 }
-                if (start) break;
             }
 
             if (!start) {
@@ -307,12 +381,17 @@ const ShoppingList = ({
             // Simple path: from entrance to each product in the order they appear
             const simplePath: number[][] = [start, ...productLocations];
 
-            // Find exit (ending point)
-            for (let i = 0; i < layoutData.length; i++) {
-                for (let j = 0; j < layoutData[i].length; j++) {
-                    if (layoutData[i][j].type === "exit") {
-                        simplePath.push([i, j]);
-                        break;
+            // Add cash register as the final destination if found
+            if (cashRegister) {
+                simplePath.push(cashRegister);
+            } else {
+                // Find exit as alternative
+                for (let i = 0; i < layoutData.length; i++) {
+                    for (let j = 0; j < layoutData[i].length; j++) {
+                        if (layoutData[i][j].type === "exit") {
+                            simplePath.push([i, j]);
+                            break;
+                        }
                     }
                 }
             }
