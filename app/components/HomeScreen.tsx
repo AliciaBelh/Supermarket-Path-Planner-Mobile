@@ -52,8 +52,8 @@ const HomeScreen = () => {
                         style={styles.startPlanningButton}
                         onPress={navigateToPlan}
                     >
+                        <Text style={styles.startPlanningText}>Start Planning</Text>
                         <Ionicons name="arrow-forward" size={20} color="white" />
-                        <Text style={styles.startPlanningText}>Go to Planning</Text>
                     </TouchableOpacity>
                 </View>
             </ScrollView>
