@@ -8,7 +8,7 @@ import { View, StyleSheet } from 'react-native';
 export default function TabLayout() {
     return (
         <View style={styles.container}>
-            <AppHeader />
+          
             <Tabs
                 screenOptions={{
                     headerShown: false, // Using our custom header
