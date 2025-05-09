@@ -23,19 +23,6 @@ const HomeScreen = () => {
     return (
         <ScreenLayout title="Supermarket Path Planner">
             <ScrollView style={styles.contentContainer}>
-                <ImageBackground
-                    source={{ uri: "https://images.unsplash.com/photo-1579113800032-c38bd7635818?q=80&w=1000&auto=format&fit=crop" }}
-                    resizeMode="cover"
-                    style={styles.backgroundImage}
-                >
-                    <View style={styles.overlay} />
-
-                    <View style={styles.userProfileSection}>
-                        <View style={styles.userAvatarContainer}>
-                            <Ionicons name="person-circle" size={80} color="#2E7D32" />
-                        </View>
-                    </View>
-                </ImageBackground>
 
                 <View style={styles.infoSection}>
                     <View style={styles.infoCard}>
