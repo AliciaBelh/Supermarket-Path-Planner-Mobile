@@ -870,6 +870,7 @@ const ShoppingList = ({
                     selectedProducts={selectedProducts}
                     optimizedPath={showOptimizedPath ? optimizedPath : undefined}
                     productStops={showOptimizedPath ? productStops : undefined}
+                    products={products} // Add this line to pass products
                 />
             )
         }

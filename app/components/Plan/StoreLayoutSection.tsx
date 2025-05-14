@@ -1,21 +1,23 @@
 // StoreLayoutSection.tsx
-import React from "react";
+import React, { useState } from "react";
 import {
     View,
     Text,
     StyleSheet,
     ScrollView,
     Dimensions,
+    TouchableOpacity,
 } from "react-native";
-import { Square } from "../../../types";
+import { Square, Product } from "../../../types";
 import { Ionicons } from "@expo/vector-icons";
+import StopProductsModal from "../StopProductsModal";
 
 interface ProductStop {
-    position: [number, number];
-    stopNumber: number;
-    products: string[];
-    isSpecial?: boolean;
-    label?: string;
+    position: [number, number]; // Coordinates of the product square
+    stopNumber: number;         // The stop number (1, 2, 3, etc.)
+    products: string[];         // Product IDs in this square
+    isSpecial?: boolean;        // Flag to indicate if this is a special stop
+    label?: string;             // Label for special stops
 }
 
 interface StoreLayoutSectionProps {
@@ -23,6 +25,7 @@ interface StoreLayoutSectionProps {
     selectedProducts: string[];
     optimizedPath?: number[][];
     productStops?: ProductStop[];
+    products: Product[];
 }
 
 // Create a responsive square size based on screen width
@@ -34,7 +37,13 @@ const StoreLayoutSection = ({
     selectedProducts,
     optimizedPath,
     productStops,
+    products,
 }: StoreLayoutSectionProps) => {
+    // State for product preview modal
+    const [modalVisible, setModalVisible] = useState(false);
+    const [selectedStop, setSelectedStop] = useState<ProductStop | null>(null);
+    const [stopProducts, setStopProducts] = useState<Product[]>([]);
+
     // Get the square color based on its type
     const getSquareColor = (square: Square) => {
         // Show the regular color based on type
@@ -62,6 +71,24 @@ const StoreLayoutSection = ({
     const getProductStop = (row: number, col: number): ProductStop | undefined => {
         if (!productStops) return undefined;
         return productStops.find(stop => stop.position[0] === row && stop.position[1] === col);
+    };
+
+    // Function to handle tapping on a square
+    const handleSquareTap = (square: Square, row: number, col: number) => {
+        // Find if this is a product stop
+        const productStop = getProductStop(row, col);
+
+        if (productStop) {
+            // Get the actual products for this stop
+            const stopProductIds = productStop.products || [];
+            const productsToShow = products.filter(product =>
+                stopProductIds.includes(product.id)
+            );
+
+            setSelectedStop(productStop);
+            setStopProducts(productsToShow);
+            setModalVisible(true);
+        }
     };
 
     // Find entrance and cash register coordinates
@@ -108,18 +135,27 @@ const StoreLayoutSection = ({
         let stopLabel: string | number = "";
         let markerStyle = {};
 
-        if (productStop) {
-            if (productStop.isSpecial) {
-                stopLabel = productStop.label || "";
-                markerStyle = productStop.label === "Start" ? styles.startMarker :
-                    productStop.label === "Finish" ? styles.finishMarker : {};
+        if (isEntrance) {
+            stopLabel = "Start";
+            markerStyle = styles.startMarker;
+        } else if (isCashRegister) {
+            stopLabel = "Finish";
+            markerStyle = styles.finishMarker;
+        } else if (isProductStop) {
+            if (productStop!.isSpecial && productStop!.label) {
+                stopLabel = productStop!.label;
+                if (productStop!.label === "Start") {
+                    markerStyle = styles.startMarker;
+                } else if (productStop!.label === "Finish") {
+                    markerStyle = styles.finishMarker;
+                }
             } else {
-                stopLabel = productStop.stopNumber;
+                stopLabel = productStop!.stopNumber;
             }
         }
 
         return (
-            <View
+            <TouchableOpacity
                 key={`${rowIndex}-${colIndex}`}
                 style={[
                     styles.square,
@@ -132,6 +168,8 @@ const StoreLayoutSection = ({
                         borderColor: isSelectedProductSquare ? "#FF6D00" : "#999",
                     },
                 ]}
+                onPress={() => handleSquareTap(square, rowIndex, colIndex)}
+                activeOpacity={showStopMarker ? 0.7 : 1}
             >
                 {/* If we should show a stop marker */}
                 {showStopMarker && (
@@ -144,7 +182,7 @@ const StoreLayoutSection = ({
                         </Text>
                     </View>
                 )}
-            </View>
+            </TouchableOpacity>
         );
     };
 
@@ -276,7 +314,7 @@ const StoreLayoutSection = ({
                 <View style={styles.pathInfoContainer}>
                     <Ionicons name="map" size={20} color="#2E7D32" />
                     <Text style={styles.pathInfoText}>
-                        Optimized path generated with {productStops ? productStops.length : 0} product stops
+                        Optimized path generated with {productStops ? productStops.filter(stop => !stop.isSpecial).length : 0} product stops
                     </Text>
                 </View>
             )}
@@ -349,6 +387,14 @@ const StoreLayoutSection = ({
                     )}
                 </View>
             </View>
+
+            {/* Products Modal */}
+            <StopProductsModal
+                visible={modalVisible}
+                stopNumber={selectedStop?.isSpecial ? selectedStop.label || "" : selectedStop?.stopNumber || 0}
+                products={stopProducts}
+                onClose={() => setModalVisible(false)}
+            />
         </View>
     );
 };
