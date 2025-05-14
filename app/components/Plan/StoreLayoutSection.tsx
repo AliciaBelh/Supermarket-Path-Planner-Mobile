@@ -10,10 +10,19 @@ import {
 import { Square } from "../../../types";
 import { Ionicons } from "@expo/vector-icons";
 
+interface ProductStop {
+    position: [number, number];
+    stopNumber: number;
+    products: string[];
+    isSpecial?: boolean;
+    label?: string;
+}
+
 interface StoreLayoutSectionProps {
     layoutData: Square[][];
     selectedProducts: string[];
     optimizedPath?: number[][];
+    productStops?: ProductStop[];
 }
 
 // Create a responsive square size based on screen width
@@ -24,6 +33,7 @@ const StoreLayoutSection = ({
     layoutData,
     selectedProducts,
     optimizedPath,
+    productStops,
 }: StoreLayoutSectionProps) => {
     // Get the square color based on its type
     const getSquareColor = (square: Square) => {
@@ -48,11 +58,31 @@ const StoreLayoutSection = ({
         return optimizedPath.some(pos => pos[0] === row && pos[1] === col);
     };
 
-    // Get the position in the path (for numbering)
-    const getPathPosition = (row: number, col: number): number => {
-        if (!optimizedPath) return -1;
-        return optimizedPath.findIndex(pos => pos[0] === row && pos[1] === col);
+    // Find if this position is a product stop
+    const getProductStop = (row: number, col: number): ProductStop | undefined => {
+        if (!productStops) return undefined;
+        return productStops.find(stop => stop.position[0] === row && stop.position[1] === col);
     };
+
+    // Find entrance and cash register coordinates
+    const findKeyLocations = () => {
+        let entranceCoord: { row: number; col: number } | null = null;
+        let cashRegisterCoord: { row: number; col: number } | null = null;
+
+        for (let i = 0; i < layoutData.length; i++) {
+            for (let j = 0; j < layoutData[i].length; j++) {
+                if (layoutData[i][j].type === "entrance") {
+                    entranceCoord = { row: i, col: j };
+                } else if (layoutData[i][j].type === "cash_register") {
+                    cashRegisterCoord = { row: i, col: j };
+                }
+            }
+        }
+
+        return { entranceCoord, cashRegisterCoord };
+    };
+
+    const { entranceCoord, cashRegisterCoord } = findKeyLocations();
 
     // Render a square in the layout
     const renderSquare = (square: Square, rowIndex: number, colIndex: number) => {
@@ -61,9 +91,32 @@ const StoreLayoutSection = ({
             square.type === "products" &&
             square.productIds.some((id) => selectedProducts.includes(id));
 
-        // Check if this square is part of the optimized path
-        const pathPos = getPathPosition(rowIndex, colIndex);
-        const onPath = pathPos !== -1;
+        // Check if this is a product stop
+        const productStop = getProductStop(rowIndex, colIndex);
+        const isProductStop = !!productStop;
+
+        // Determine if this is the entrance or cash register
+        const isEntrance = square.type === "entrance";
+        const isCashRegister = square.type === "cash_register";
+
+        // Determine if we should show a stop marker
+        const showStopMarker = isProductStop ||
+            (isEntrance && productStops && productStops.length > 0) ||
+            (isCashRegister && productStops && productStops.length > 0);
+
+        // Determine the stop label and marker style
+        let stopLabel: string | number = "";
+        let markerStyle = {};
+
+        if (productStop) {
+            if (productStop.isSpecial) {
+                stopLabel = productStop.label || "";
+                markerStyle = productStop.label === "Start" ? styles.startMarker :
+                    productStop.label === "Finish" ? styles.finishMarker : {};
+            } else {
+                stopLabel = productStop.stopNumber;
+            }
+        }
 
         return (
             <View
@@ -80,9 +133,15 @@ const StoreLayoutSection = ({
                     },
                 ]}
             >
-                {onPath && (
-                    <View style={styles.pathMarker}>
-                        <Text style={styles.pathMarkerText}>{pathPos + 1}</Text>
+                {/* If we should show a stop marker */}
+                {showStopMarker && (
+                    <View style={[styles.stopMarker, markerStyle]}>
+                        <Text style={[
+                            styles.stopMarkerText,
+                            (isEntrance || isCashRegister) ? styles.specialStopText : null
+                        ]}>
+                            {stopLabel}
+                        </Text>
                     </View>
                 )}
             </View>
@@ -91,12 +150,44 @@ const StoreLayoutSection = ({
 
     // Draw a line between consecutive path points
     const renderPathLines = () => {
-        if (!optimizedPath || optimizedPath.length < 2) return null;
+        if (!optimizedPath || optimizedPath.length < 1) return null;
 
-        return optimizedPath.map((point, index) => {
-            if (index === optimizedPath.length - 1) return null; // Skip the last point
+        const lines = [];
 
-            const start = point;
+        // Draw line from entrance to first path point
+        if (entranceCoord && optimizedPath.length > 0) {
+            const start = [entranceCoord.row, entranceCoord.col];
+            const end = optimizedPath[0];
+
+            // Calculate line position and dimensions
+            const startX = start[1] * SQUARE_SIZE + SQUARE_SIZE / 2;
+            const startY = start[0] * SQUARE_SIZE + SQUARE_SIZE / 2;
+            const endX = end[1] * SQUARE_SIZE + SQUARE_SIZE / 2;
+            const endY = end[0] * SQUARE_SIZE + SQUARE_SIZE / 2;
+
+            // Calculate line length and angle
+            const length = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+            const angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
+
+            lines.push(
+                <View
+                    key="line-entrance"
+                    style={[
+                        styles.pathLine,
+                        {
+                            width: length,
+                            left: startX,
+                            top: startY,
+                            transform: [{ rotate: `${angle}deg` }, { translateY: -1 }],
+                        },
+                    ]}
+                />
+            );
+        }
+
+        // Draw lines between path points
+        for (let index = 0; index < optimizedPath.length - 1; index++) {
+            const start = optimizedPath[index];
             const end = optimizedPath[index + 1];
 
             // Calculate line position and dimensions
@@ -109,7 +200,7 @@ const StoreLayoutSection = ({
             const length = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
             const angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
 
-            return (
+            lines.push(
                 <View
                     key={`line-${index}`}
                     style={[
@@ -123,7 +214,40 @@ const StoreLayoutSection = ({
                     ]}
                 />
             );
-        });
+        }
+
+        // Draw line from last path point to cash register
+        if (cashRegisterCoord && optimizedPath.length > 0) {
+            const start = optimizedPath[optimizedPath.length - 1];
+            const end = [cashRegisterCoord.row, cashRegisterCoord.col];
+
+            // Calculate line position and dimensions
+            const startX = start[1] * SQUARE_SIZE + SQUARE_SIZE / 2;
+            const startY = start[0] * SQUARE_SIZE + SQUARE_SIZE / 2;
+            const endX = end[1] * SQUARE_SIZE + SQUARE_SIZE / 2;
+            const endY = end[0] * SQUARE_SIZE + SQUARE_SIZE / 2;
+
+            // Calculate line length and angle
+            const length = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+            const angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
+
+            lines.push(
+                <View
+                    key="line-cash-register"
+                    style={[
+                        styles.pathLine,
+                        {
+                            width: length,
+                            left: startX,
+                            top: startY,
+                            transform: [{ rotate: `${angle}deg` }, { translateY: -1 }],
+                        },
+                    ]}
+                />
+            );
+        }
+
+        return lines;
     };
 
     // Render the layout
@@ -152,7 +276,7 @@ const StoreLayoutSection = ({
                 <View style={styles.pathInfoContainer}>
                     <Ionicons name="map" size={20} color="#2E7D32" />
                     <Text style={styles.pathInfoText}>
-                        Optimized path generated with {optimizedPath.length} stops
+                        Optimized path generated with {productStops ? productStops.length : 0} product stops
                     </Text>
                 </View>
             )}
@@ -196,13 +320,32 @@ const StoreLayoutSection = ({
                         />
                         <Text style={styles.legendText}>Exit</Text>
                     </View>
-                    {optimizedPath && optimizedPath.length > 0 && (
-                        <View style={styles.legendRow}>
-                            <View style={styles.legendPathMarker}>
-                                <Text style={styles.legendPathMarkerText}>1</Text>
+
+                    {productStops && productStops.length > 0 && (
+                        <>
+                            <View style={styles.legendRow}>
+                                <View style={[styles.legendStopMarker, styles.legendStartMarker]}>
+                                    <Text style={styles.legendStopMarkerText}>S</Text>
+                                </View>
+                                <Text style={styles.legendText}>Start</Text>
                             </View>
-                            <Text style={styles.legendText}>Path Stop</Text>
-                        </View>
+                            <View style={styles.legendRow}>
+                                <View style={[styles.legendStopMarker, styles.legendFinishMarker]}>
+                                    <Text style={styles.legendStopMarkerText}>F</Text>
+                                </View>
+                                <Text style={styles.legendText}>Finish</Text>
+                            </View>
+                            <View style={styles.legendRow}>
+                                <View style={styles.legendStopMarker}>
+                                    <Text style={styles.legendStopMarkerText}>1</Text>
+                                </View>
+                                <Text style={styles.legendText}>Product Stop</Text>
+                            </View>
+                            <View style={styles.legendRow}>
+                                <View style={[styles.legendPathLine]} />
+                                <Text style={styles.legendText}>Path</Text>
+                            </View>
+                        </>
                     )}
                 </View>
             </View>
@@ -262,18 +405,27 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         alignItems: "center",
     },
-    pathMarker: {
+    stopMarker: {
         width: SQUARE_SIZE * 0.65,
         height: SQUARE_SIZE * 0.65,
         borderRadius: SQUARE_SIZE * 0.325,
-        backgroundColor: "rgba(33, 33, 33, 0.8)",
+        backgroundColor: "rgba(255, 87, 34, 0.9)", // Orange marker for stops
         justifyContent: "center",
         alignItems: "center",
     },
-    pathMarkerText: {
+    startMarker: {
+        backgroundColor: "rgba(33, 150, 243, 0.9)",  // Blue for start
+    },
+    finishMarker: {
+        backgroundColor: "rgba(255, 193, 7, 0.9)",   // Yellow for finish
+    },
+    stopMarkerText: {
         color: "white",
         fontSize: SQUARE_SIZE * 0.4,
         fontWeight: "bold",
+    },
+    specialStopText: {
+        fontSize: SQUARE_SIZE * 0.25,  // Smaller font for "Start" and "Finish"
     },
     pathLine: {
         height: 2,
@@ -310,19 +462,31 @@ const styles = StyleSheet.create({
         borderColor: "#999",
         marginRight: 8,
     },
-    legendPathMarker: {
+    legendStopMarker: {
         width: 16,
         height: 16,
         borderRadius: 8,
-        backgroundColor: "rgba(33, 33, 33, 0.8)",
+        backgroundColor: "rgba(255, 87, 34, 0.9)", // Orange marker for stops
         justifyContent: "center",
         alignItems: "center",
         marginRight: 8,
     },
-    legendPathMarkerText: {
+    legendStartMarker: {
+        backgroundColor: "rgba(33, 150, 243, 0.9)",  // Blue for start
+    },
+    legendFinishMarker: {
+        backgroundColor: "rgba(255, 193, 7, 0.9)",   // Yellow for finish
+    },
+    legendStopMarkerText: {
         color: "white",
         fontSize: 10,
         fontWeight: "bold",
+    },
+    legendPathLine: {
+        width: 16,
+        height: 2,
+        backgroundColor: "rgba(33, 33, 33, 0.8)",
+        marginRight: 8,
     },
     legendText: {
         fontSize: 12,
