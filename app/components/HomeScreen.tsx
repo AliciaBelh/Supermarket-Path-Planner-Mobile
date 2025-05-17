@@ -5,8 +5,6 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
-    Image,
-    ImageBackground,
     ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -27,7 +25,7 @@ const HomeScreen = () => {
                 <View style={styles.infoSection}>
                     <View style={styles.infoCard}>
                         <View style={styles.infoCardHeader}>
-                            <Ionicons name="information-circle" size={24} color="#2E7D32" />
+                            <Ionicons name="information-circle" size={24} color="#5B8DB8" />
                             <Text style={styles.infoCardTitle}>About Supermarket Path Planner</Text>
                         </View>
                         <Text style={styles.infoCardText}>
@@ -37,7 +35,7 @@ const HomeScreen = () => {
 
                     <View style={styles.infoCard}>
                         <View style={styles.infoCardHeader}>
-                            <Ionicons name="list" size={24} color="#2E7D32" />
+                            <Ionicons name="list" size={24} color="#5B8DB8" />
                             <Text style={styles.infoCardTitle}>How to Use</Text>
                         </View>
                         <Text style={styles.infoCardText}>
@@ -66,23 +64,6 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: "#f8f9fa",
     },
-    backgroundImage: {
-        width: "100%",
-        height: 240,
-    },
-    overlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: "rgba(255, 255, 255, 0.85)",
-    },
-    userProfileSection: {
-        paddingVertical: 20,
-        paddingHorizontal: 16,
-        alignItems: "center",
-    },
-    userAvatarContainer: {
-        alignItems: "center",
-        marginBottom: 16,
-    },
     infoSection: {
         padding: 16,
         marginTop: 10,
@@ -106,7 +87,7 @@ const styles = StyleSheet.create({
     infoCardTitle: {
         fontSize: 18,
         fontWeight: "bold",
-        color: "#2E7D32",
+        color: "#5B8DB8",
         marginLeft: 8,
     },
     infoCardText: {
@@ -115,7 +96,7 @@ const styles = StyleSheet.create({
         lineHeight: 22,
     },
     startPlanningButton: {
-        backgroundColor: "#2E7D32",
+        backgroundColor: "#5B8DB8",
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",

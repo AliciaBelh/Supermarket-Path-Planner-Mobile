@@ -1,3 +1,4 @@
+// components/AppHeader.tsx
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -38,13 +39,10 @@ const AppHeader: React.FC<AppHeaderProps> = ({
         setUserEmail(null);
       }
     };
-
     fetchUserInfo();
   }, []);
 
-  const toggleMenu = () => {
-    setMenuVisible(!menuVisible);
-  };
+  const toggleMenu = () => setMenuVisible(!menuVisible);
 
   const handleSignOut = async () => {
     try {
@@ -73,7 +71,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
 
   return (
     <>
-      <StatusBar barStyle="light-content" backgroundColor="#2E7D32" />
+      <StatusBar barStyle="light-content" backgroundColor="#5B8DB8" />
       <View style={styles.header}>
         {showBackButton ? (
           <TouchableOpacity style={styles.backButton} onPress={onBackPress}>
@@ -85,33 +83,41 @@ const AppHeader: React.FC<AppHeaderProps> = ({
 
         <Text style={styles.headerTitle}>{title}</Text>
 
-        <TouchableOpacity style={styles.profileButton} onPress={toggleMenu} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.profileButton}
+          onPress={toggleMenu}
+          activeOpacity={0.7}
+        >
           <Ionicons name="person-circle" size={32} color="white" />
         </TouchableOpacity>
       </View>
 
-      {/* User Menu Modal */}
       <Modal
         visible={menuVisible}
         transparent={true}
         animationType="fade"
         onRequestClose={toggleMenu}
       >
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={toggleMenu}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={toggleMenu}
+        >
           <BlurView intensity={20} style={StyleSheet.absoluteFill} tint="dark" />
 
           <View style={styles.menuContainer}>
-            <TouchableOpacity style={styles.menuCloseButton} onPress={toggleMenu}>
+            <TouchableOpacity
+              style={styles.menuCloseButton}
+              onPress={toggleMenu}
+            >
               <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>
 
             <View style={styles.userInfoContainer}>
               <View style={styles.userAvatarContainer}>
-                <Ionicons name="person-circle" size={70} color="#2E7D32" />
+                <Ionicons name="person-circle" size={70} color="#5B8DB8" />
               </View>
-              <Text style={styles.userNameText}>
-                {userEmail || "User"}
-              </Text>
+              <Text style={styles.userNameText}>{userEmail || "User"}</Text>
             </View>
 
             <View style={styles.menuDivider} />
@@ -130,7 +136,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
 const styles = StyleSheet.create({
   header: {
     height: 60,
-    backgroundColor: "#2E7D32",
+    backgroundColor: "#5B8DB8",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -191,7 +197,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "#E8F5E9",
+    backgroundColor: "#E3ECF4",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,

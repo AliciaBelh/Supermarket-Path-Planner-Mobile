@@ -1,3 +1,4 @@
+// components/PlanScreen.tsx
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -59,7 +60,7 @@ const PlanScreen = () => {
       <View style={styles.itemContent}>
         <View style={styles.supermarketInfo}>
           <View style={styles.iconContainer}>
-            <Ionicons name="cart" size={28} color="#2E7D32" />
+            <Ionicons name="cart" size={28} color="#5B8DB8" />
           </View>
           <View style={styles.textContainer}>
             <Text style={styles.supermarketName}>{item.name}</Text>
@@ -84,7 +85,7 @@ const PlanScreen = () => {
     return (
       <ScreenLayout title="Plan Your Shopping">
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#2E7D32" />
+          <ActivityIndicator size="large" color="#5B8DB8" />
           <Text style={styles.loadingText}>Loading supermarkets...</Text>
         </View>
       </ScreenLayout>
@@ -110,7 +111,7 @@ const PlanScreen = () => {
       <View style={styles.content}>
         <View style={styles.infoCard}>
           <View style={styles.infoCardHeader}>
-            <Ionicons name="information-circle" size={22} color="#2E7D32" />
+            <Ionicons name="information-circle" size={22} color="#5B8DB8" />
             <Text style={styles.infoCardTitle}>How It Works</Text>
           </View>
           <Text style={styles.infoCardText}>
@@ -121,7 +122,6 @@ const PlanScreen = () => {
 
         <Text style={styles.sectionTitle}>Available Supermarkets</Text>
 
-        {/* 🔍 Search Input */}
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={20} color="#757575" style={styles.searchIcon} />
           <TextInput
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
   infoCardTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#2E7D32",
+    color: "#5B8DB8",
     marginLeft: 8,
   },
   infoCardText: {
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: "#e8f5e9",
+    backgroundColor: "#E3ECF4",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   planButton: {
-    backgroundColor: "#2E7D32",
+    backgroundColor: "#5B8DB8",
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
     marginVertical: 16,
   },
   retryButton: {
-    backgroundColor: "#2E7D32",
+    backgroundColor: "#5B8DB8",
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
