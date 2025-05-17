@@ -5,8 +5,6 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
-    Image,
-    ImageBackground,
     ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -23,24 +21,11 @@ const HomeScreen = () => {
     return (
         <ScreenLayout title="Supermarket Path Planner">
             <ScrollView style={styles.contentContainer}>
-                <ImageBackground
-                    source={{ uri: "https://images.unsplash.com/photo-1579113800032-c38bd7635818?q=80&w=1000&auto=format&fit=crop" }}
-                    resizeMode="cover"
-                    style={styles.backgroundImage}
-                >
-                    <View style={styles.overlay} />
-
-                    <View style={styles.userProfileSection}>
-                        <View style={styles.userAvatarContainer}>
-                            <Ionicons name="person-circle" size={80} color="#2E7D32" />
-                        </View>
-                    </View>
-                </ImageBackground>
 
                 <View style={styles.infoSection}>
                     <View style={styles.infoCard}>
                         <View style={styles.infoCardHeader}>
-                            <Ionicons name="information-circle" size={24} color="#2E7D32" />
+                            <Ionicons name="information-circle" size={24} color="#5B8DB8" />
                             <Text style={styles.infoCardTitle}>About Supermarket Path Planner</Text>
                         </View>
                         <Text style={styles.infoCardText}>
@@ -50,7 +35,7 @@ const HomeScreen = () => {
 
                     <View style={styles.infoCard}>
                         <View style={styles.infoCardHeader}>
-                            <Ionicons name="list" size={24} color="#2E7D32" />
+                            <Ionicons name="list" size={24} color="#5B8DB8" />
                             <Text style={styles.infoCardTitle}>How to Use</Text>
                         </View>
                         <Text style={styles.infoCardText}>
@@ -65,8 +50,8 @@ const HomeScreen = () => {
                         style={styles.startPlanningButton}
                         onPress={navigateToPlan}
                     >
+                        <Text style={styles.startPlanningText}>Start Planning</Text>
                         <Ionicons name="arrow-forward" size={20} color="white" />
-                        <Text style={styles.startPlanningText}>Go to Planning</Text>
                     </TouchableOpacity>
                 </View>
             </ScrollView>
@@ -78,23 +63,6 @@ const styles = StyleSheet.create({
     contentContainer: {
         flex: 1,
         backgroundColor: "#f8f9fa",
-    },
-    backgroundImage: {
-        width: "100%",
-        height: 240,
-    },
-    overlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: "rgba(255, 255, 255, 0.85)",
-    },
-    userProfileSection: {
-        paddingVertical: 20,
-        paddingHorizontal: 16,
-        alignItems: "center",
-    },
-    userAvatarContainer: {
-        alignItems: "center",
-        marginBottom: 16,
     },
     infoSection: {
         padding: 16,
@@ -119,7 +87,7 @@ const styles = StyleSheet.create({
     infoCardTitle: {
         fontSize: 18,
         fontWeight: "bold",
-        color: "#2E7D32",
+        color: "#5B8DB8",
         marginLeft: 8,
     },
     infoCardText: {
@@ -128,7 +96,7 @@ const styles = StyleSheet.create({
         lineHeight: 22,
     },
     startPlanningButton: {
-        backgroundColor: "#2E7D32",
+        backgroundColor: "#5B8DB8",
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",

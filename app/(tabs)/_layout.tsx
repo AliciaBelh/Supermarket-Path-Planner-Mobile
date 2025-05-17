@@ -2,17 +2,15 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AppHeader from '../components/AppHeader';
 import { View, StyleSheet } from 'react-native';
 
 export default function TabLayout() {
     return (
         <View style={styles.container}>
-            <AppHeader />
             <Tabs
                 screenOptions={{
-                    headerShown: false, // Using our custom header
-                    tabBarActiveTintColor: '#2E7D32',
+                    headerShown: false,
+                    tabBarActiveTintColor: '#5B8DB8',
                     tabBarInactiveTintColor: '#757575',
                     tabBarLabelStyle: {
                         fontSize: 12,
