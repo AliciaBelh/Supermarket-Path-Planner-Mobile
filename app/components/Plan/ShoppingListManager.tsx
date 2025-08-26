@@ -1,5 +1,5 @@
 // app/components/Plan/ShoppingListManager.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -81,6 +81,18 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
   const [currentList, setCurrentList] = useState<ShoppingList | null>(null);
   const [showListsModal, setShowListsModal] = useState(false);
 
+  // Compare selected products with current list contents to determine if there are changes
+  const hasChanges = useMemo(() => {
+    if (!currentList) return false;
+    const currentIds = new Set(safeParseProductIDs(currentList.productIDs));
+    const selectedIds = new Set(selectedProducts);
+    if (currentIds.size !== selectedIds.size) return true;
+    for (const id of selectedIds) {
+      if (!currentIds.has(id)) return true;
+    }
+    return false;
+  }, [currentList, selectedProducts]);
+
   // Fetch user's shopping lists for this supermarket
   useEffect(() => {
     if (supermarketId && currentUser?.username) {
@@ -104,7 +116,13 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
 
       if (response.data) {
         console.debug("Fetched shopping lists:", response.data.length);
-        setShoppingLists(response.data);
+        // Sort by updatedAt desc, fallback to createdAt
+        const sorted = [...response.data].sort((a, b) => {
+          const ad = a.updatedAt || a.createdAt || "";
+          const bd = b.updatedAt || b.createdAt || "";
+          return bd.localeCompare(ad);
+        });
+        setShoppingLists(sorted);
 
         // If there's a draft list, set it as current
       }
@@ -317,14 +335,16 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
               <TouchableOpacity
                 style={styles.saveButton}
                 onPress={updateCurrentList}
-                disabled={saving}
+                disabled={saving || !hasChanges}
               >
                 {saving ? (
                   <ActivityIndicator size="small" color="white" />
                 ) : (
                   <>
                     <Ionicons name="save-outline" size={16} color="white" />
-                    <Text style={styles.buttonText}>Save</Text>
+                    <Text style={styles.buttonText}>
+                      {hasChanges ? "Save" : "Saved"}
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -373,6 +393,12 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
               value={newListName}
               onChangeText={setNewListName}
               autoFocus
+              returnKeyType="done"
+              onSubmitEditing={() => {
+                if (!saving && newListName.trim()) {
+                  createNewList();
+                }
+              }}
             />
 
             <View style={styles.modalButtons}>
@@ -413,12 +439,20 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
           <View style={styles.listsModalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>My Shopping Lists</Text>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setShowListsModal(false)}
-              >
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <TouchableOpacity
+                  style={[styles.closeButton, { marginRight: 8 }]}
+                  onPress={fetchShoppingLists}
+                >
+                  <Ionicons name="refresh" size={22} color="#666" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setShowListsModal(false)}
+                >
+                  <Ionicons name="close" size={24} color="#666" />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {loading ? (
