@@ -243,25 +243,24 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
       const updatedList = {
         id: currentList.id,
         status: "active" as ShoppingListStatus,
-        productIDs: JSON.stringify(selectedProducts),
+        productIDs: safeStringifyProductIDs(selectedProducts),
       };
 
       const response = await client.models.ShoppingList.update({
         input: updatedList,
       });
-
-      if (response.data) {
-        setCurrentList(response.data);
-        setShoppingLists((prevLists) =>
-          prevLists.map((list) =>
-            list.id === response.data.id ? response.data : list
-          )
-        );
-        Alert.alert(
-          "Success",
-          "Shopping list is now active! You can use it for navigation."
-        );
-      }
+      const activated = getResponseDataOrThrow<ShoppingList>(
+        response,
+        "Activate shopping list"
+      );
+      setCurrentList(activated);
+      setShoppingLists((prevLists) =>
+        prevLists.map((list) => (list.id === activated.id ? activated : list))
+      );
+      Alert.alert(
+        "Success",
+        "Shopping list is now active! You can use it for navigation."
+      );
     } catch (err) {
       console.error("Error activating shopping list:", err);
       Alert.alert("Error", "Failed to activate shopping list");
@@ -345,6 +344,23 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
                     <Text style={styles.buttonText}>
                       {hasChanges ? "Save" : "Saved"}
                     </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.activateButton}
+                onPress={activateList}
+                disabled={
+                  saving || selectedProducts.length === 0 || !currentList
+                }
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <>
+                    <Ionicons name="play" size={16} color="white" />
+                    <Text style={styles.buttonText}>Activate</Text>
                   </>
                 )}
               </TouchableOpacity>
