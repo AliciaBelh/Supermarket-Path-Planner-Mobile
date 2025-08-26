@@ -20,6 +20,43 @@ import {
   AmplifyClient,
 } from "../../../types";
 
+// --- Helpers: JSON safety and response handling ---
+const safeStringifyProductIDs = (ids: string[]): string => {
+  try {
+    return JSON.stringify(Array.isArray(ids) ? ids : []);
+  } catch (e) {
+    console.warn("Failed to stringify product IDs, defaulting to []:", e);
+    return "[]";
+  }
+};
+
+const safeParseProductIDs = (raw: string): string[] => {
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((x) => typeof x === "string");
+    }
+    return [];
+  } catch (e) {
+    console.warn("Failed to parse product IDs, returning []:", e);
+    return [];
+  }
+};
+
+const hasResponseErrors = (resp: any): boolean => {
+  return Array.isArray(resp?.errors) && resp.errors.length > 0;
+};
+
+const getResponseDataOrThrow = <T,>(resp: any, action: string): T => {
+  if (hasResponseErrors(resp)) {
+    console.warn(`${action} returned errors:`, resp.errors);
+  }
+  if (resp && resp.data) {
+    return resp.data as T;
+  }
+  throw new Error(`${action} failed: no data in response`);
+};
+
 interface ShoppingListManagerProps {
   supermarketId: string;
   selectedProducts: string[];
@@ -97,36 +134,25 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
       const newList: Omit<ShoppingList, "id" | "createdAt" | "updatedAt"> = {
         name: newListName.trim(),
         owner: currentUser?.username || "",
-        productIDs: JSON.stringify(selectedProducts),
+        productIDs: safeStringifyProductIDs(selectedProducts),
         supermarketID: supermarketId,
       };
 
       const response = await client.models.ShoppingList.create({
         input: newList,
       });
-
-      // Surface non-fatal errors if present in response (when using newer Amplify clients)
-      const maybeErrors = (response as any)?.errors as any[] | undefined;
-      if (maybeErrors && maybeErrors.length) {
-        console.warn("Create shopping list returned errors:", maybeErrors);
-      }
-
-      if (response.data) {
-        console.debug("Shopping list created successfully", response.data.id);
-        setCurrentList(response.data);
-        setShoppingLists((prevLists) => [...prevLists, response.data]);
-        setNewListName("");
-        setShowNewListModal(false);
-        Alert.alert("Success", "Shopping list created successfully");
-        // Refresh lists in background to ensure server state is reflected
-        fetchShoppingLists();
-      } else {
-        console.error("Create shopping list returned no data", response);
-        Alert.alert(
-          "Error",
-          "Failed to create shopping list. No data returned."
-        );
-      }
+      const created = getResponseDataOrThrow<ShoppingList>(
+        response,
+        "Create shopping list"
+      );
+      console.debug("Shopping list created successfully", created.id);
+      setCurrentList(created);
+      setShoppingLists((prevLists) => [...prevLists, created]);
+      setNewListName("");
+      setShowNewListModal(false);
+      Alert.alert("Success", "Shopping list created successfully");
+      // Refresh lists in background to ensure server state is reflected
+      fetchShoppingLists();
     } catch (err) {
       console.error("Error creating shopping list:", err);
       Alert.alert("Error", "Failed to create shopping list");
@@ -145,22 +171,21 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
 
       const updatedList = {
         id: currentList.id,
-        productIDs: JSON.stringify(selectedProducts),
+        productIDs: safeStringifyProductIDs(selectedProducts),
       };
 
       const response = await client.models.ShoppingList.update({
         input: updatedList,
       });
-
-      if (response.data) {
-        setCurrentList(response.data);
-        setShoppingLists((prevLists) =>
-          prevLists.map((list) =>
-            list.id === response.data.id ? response.data : list
-          )
-        );
-        Alert.alert("Success", "Shopping list updated successfully");
-      }
+      const updated = getResponseDataOrThrow<ShoppingList>(
+        response,
+        "Update shopping list"
+      );
+      setCurrentList(updated);
+      setShoppingLists((prevLists) =>
+        prevLists.map((list) => (list.id === updated.id ? updated : list))
+      );
+      Alert.alert("Success", "Shopping list updated successfully");
     } catch (err) {
       console.error("Error updating shopping list:", err);
       Alert.alert("Error", "Failed to update shopping list");
@@ -175,13 +200,8 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
 
     // Parse product IDs and notify parent
     if (onShoppingListLoaded) {
-      try {
-        const productIds = JSON.parse(list.productIDs);
-        onShoppingListLoaded(productIds);
-      } catch (e) {
-        console.error("Error parsing productIDs:", e);
-        Alert.alert("Error", "Failed to load shopping list items");
-      }
+      const productIds = safeParseProductIDs(list.productIDs);
+      onShoppingListLoaded(productIds);
     }
   };
 
