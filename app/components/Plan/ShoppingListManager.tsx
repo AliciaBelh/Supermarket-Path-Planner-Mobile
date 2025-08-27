@@ -105,6 +105,7 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
   const [showListsModal, setShowListsModal] = useState(false);
   const [showSelectHint, setShowSelectHint] = useState(false);
   const [needsFirstSave, setNeedsFirstSave] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
   // Compare selected products with current list contents to determine if there are changes
   const hasChanges = useMemo(() => {
@@ -242,6 +243,7 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
       );
       setShowSelectHint(false);
       setNeedsFirstSave(false);
+      setIsEditing(false);
       Alert.alert("Success", "Shopping list saved and activated");
     } catch (err) {
       console.error("Error updating shopping list:", err);
@@ -263,48 +265,48 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
     }
   };
 
-  const activateList = async () => {
-    if (!currentList) {
-      Alert.alert("Error", "No shopping list selected");
-      return;
-    }
+  // Begin edit mode to change list contents
+  const startChangeList = (list: ShoppingList) => {
+    loadShoppingList(list);
+    setIsEditing(true);
+  };
 
-    if (selectedProducts.length === 0) {
-      Alert.alert(
-        "Error",
-        "Please select at least one product for your shopping list"
-      );
-      return;
-    }
+  const confirmDeleteList = (list: ShoppingList) => {
+    Alert.alert(
+      "Delete list",
+      `Are you sure you want to delete "${list.name}"? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deleteList(list),
+        },
+      ]
+    );
+  };
 
+  const deleteList = async (list: ShoppingList) => {
     try {
       setSaving(true);
-
-      const updatedList = {
-        id: currentList.id,
-        status: "active" as ShoppingListStatus,
-        productIDs: safeStringifyProductIDs(selectedProducts),
-      };
-
-      // Amplify Data client expects fields directly (no { input })
-      const response = await client.models.ShoppingList.update(
-        updatedList as any
-      );
-      const activated = getResponseDataOrThrow<ShoppingList>(
-        response,
-        "Activate shopping list"
-      );
-      setCurrentList(activated);
-      setShoppingLists((prevLists) =>
-        prevLists.map((list) => (list.id === activated.id ? activated : list))
-      );
-      Alert.alert(
-        "Success",
-        "Shopping list is now active! You can use it for navigation."
-      );
-    } catch (err) {
-      console.error("Error activating shopping list:", err);
-      Alert.alert("Error", "Failed to activate shopping list");
+      const response = await client.models.ShoppingList.delete({
+        id: list.id,
+      } as any);
+      // We don't need the deleted entity, just ensure no errors
+      getResponseDataOrThrow<any>(response, "Delete shopping list");
+      setShoppingLists((prev) => prev.filter((l) => l.id !== list.id));
+      if (currentList?.id === list.id) {
+        setCurrentList(null);
+        setNeedsFirstSave(false);
+        setShowSelectHint(false);
+        setIsEditing(false);
+        onShoppingListLoaded?.([]);
+      }
+      Alert.alert("Deleted", "Shopping list deleted");
+    } catch (err: any) {
+      console.error("Error deleting shopping list:", err);
+      const msg = err?.message || "Failed to delete list";
+      Alert.alert("Error", msg);
     } finally {
       setSaving(false);
     }
@@ -340,9 +342,23 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
           </Text>
         </View>
 
-        {currentList?.id === item.id && (
-          <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
-        )}
+        <View style={styles.itemActions}>
+          <TouchableOpacity
+            style={styles.itemActionBtn}
+            onPress={() => startChangeList(item)}
+          >
+            <Text style={styles.changeTextBtn}>Change</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.itemActionBtn}
+            onPress={() => confirmDeleteList(item)}
+          >
+            <Ionicons name="trash-outline" size={20} color="#C62828" />
+          </TouchableOpacity>
+          {currentList?.id === item.id && (
+            <Ionicons name="checkmark-circle" size={22} color="#4CAF50" />
+          )}
+        </View>
       </TouchableOpacity>
     );
   };
@@ -381,7 +397,7 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
             )}
 
             <View style={styles.actionButtons}>
-              {needsFirstSave && (
+              {(needsFirstSave || (isEditing && hasChanges)) && (
                 <TouchableOpacity
                   style={styles.saveButton}
                   onPress={updateCurrentList}
@@ -394,7 +410,9 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
                   ) : (
                     <>
                       <Ionicons name="save-outline" size={16} color="white" />
-                      <Text style={styles.buttonText}>Save</Text>
+                      <Text style={styles.buttonText}>
+                        {needsFirstSave ? "Save" : "Save changes"}
+                      </Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -554,6 +572,8 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
           </View>
         </View>
       </Modal>
+
+      {/* No rename modal: content changes only */}
     </View>
   );
 };
@@ -834,6 +854,20 @@ const styles = StyleSheet.create({
     marginTop: 8,
     borderWidth: 1,
     borderColor: "#EEEEEE",
+  },
+  itemActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  itemActionBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    marginLeft: 6,
+  },
+  changeTextBtn: {
+    color: "#2196F3",
+    fontWeight: "600",
   },
   selectedListItem: {
     borderColor: "#4CAF50",
