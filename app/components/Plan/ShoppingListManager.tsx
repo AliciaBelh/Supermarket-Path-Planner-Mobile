@@ -48,12 +48,35 @@ const hasResponseErrors = (resp: any): boolean => {
 };
 
 const getResponseDataOrThrow = <T,>(resp: any, action: string): T => {
+  // Log the raw response for easier field-shape debugging
+  try {
+    console.debug(`[${action}] raw response:`, JSON.stringify(resp));
+  } catch {}
+
   if (hasResponseErrors(resp)) {
     console.warn(`${action} returned errors:`, resp.errors);
+    const firstMsg =
+      resp.errors?.[0]?.message || resp.errors?.[0] || "Unknown error";
+    throw new Error(`${action} failed: ${firstMsg}`);
   }
+
+  // Common Amplify shape
   if (resp && resp.data) {
     return resp.data as T;
   }
+  // Some clients return { item }
+  if (resp && resp.item) {
+    return resp.item as T;
+  }
+  // Or { result }
+  if (resp && resp.result) {
+    return resp.result as T;
+  }
+  // Or the object directly
+  if (resp && typeof resp === "object" && "id" in resp) {
+    return resp as T;
+  }
+
   throw new Error(`${action} failed: no data in response`);
 };
 
@@ -108,17 +131,17 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
 
       const response = await client.models.ShoppingList.list({
         filter: {
-          and: [
-            { supermarketID: { eq: supermarketId } },
-            { owner: { eq: currentUser?.username } },
-          ],
+          supermarketID: { eq: supermarketId },
         },
       });
 
-      if (response.data) {
-        console.debug("Fetched shopping lists:", response.data.length);
+      const lists: ShoppingList[] = (((response as any)?.data ??
+        (response as any)?.items) ||
+        []) as any;
+      if (Array.isArray(lists)) {
+        console.debug("Fetched shopping lists:", lists.length);
         // Sort by updatedAt desc, fallback to createdAt
-        const sorted = [...response.data].sort((a, b) => {
+        const sorted = [...lists].sort((a, b) => {
           const ad = a.updatedAt || a.createdAt || "";
           const bd = b.updatedAt || b.createdAt || "";
           return bd.localeCompare(ad);
@@ -150,16 +173,14 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
         selectedCount: selectedProducts.length,
       });
 
-      const newList: Omit<ShoppingList, "id" | "createdAt" | "updatedAt"> = {
+      const newList = {
         name: newListName.trim(),
-        owner: currentUser?.username || "",
         productIDs: safeStringifyProductIDs(selectedProducts),
         supermarketID: supermarketId,
       };
 
-      const response = await client.models.ShoppingList.create({
-        input: newList,
-      });
+      // Amplify Data client expects fields directly (no { input })
+      const response = await client.models.ShoppingList.create(newList as any);
       const created = getResponseDataOrThrow<ShoppingList>(
         response,
         "Create shopping list"
@@ -173,9 +194,13 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
       Alert.alert("Success", "Shopping list created successfully");
       // Refresh lists in background to ensure server state is reflected
       fetchShoppingLists();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error creating shopping list:", err);
-      Alert.alert("Error", "Failed to create shopping list");
+      const msg =
+        err?.errors?.[0]?.message ||
+        err?.message ||
+        "Failed to create shopping list";
+      Alert.alert("Error", msg);
     } finally {
       setSaving(false);
     }
@@ -194,9 +219,10 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
         productIDs: safeStringifyProductIDs(selectedProducts),
       };
 
-      const response = await client.models.ShoppingList.update({
-        input: updatedList,
-      });
+      // Amplify Data client expects fields directly (no { input })
+      const response = await client.models.ShoppingList.update(
+        updatedList as any
+      );
       const updated = getResponseDataOrThrow<ShoppingList>(
         response,
         "Update shopping list"
@@ -249,9 +275,10 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
         productIDs: safeStringifyProductIDs(selectedProducts),
       };
 
-      const response = await client.models.ShoppingList.update({
-        input: updatedList,
-      });
+      // Amplify Data client expects fields directly (no { input })
+      const response = await client.models.ShoppingList.update(
+        updatedList as any
+      );
       const activated = getResponseDataOrThrow<ShoppingList>(
         response,
         "Activate shopping list"
