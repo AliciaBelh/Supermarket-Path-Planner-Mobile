@@ -347,7 +347,7 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
             style={styles.itemActionBtn}
             onPress={() => startChangeList(item)}
           >
-            <Text style={styles.changeTextBtn}>Change</Text>
+            <Text style={styles.changeTextBtn}>Edit</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.itemActionBtn}
