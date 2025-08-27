@@ -106,6 +106,9 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
   const [showSelectHint, setShowSelectHint] = useState(false);
   const [needsFirstSave, setNeedsFirstSave] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [renameName, setRenameName] = useState("");
+  const [renameTarget, setRenameTarget] = useState<ShoppingList | null>(null);
 
   // Compare selected products with current list contents to determine if there are changes
   const hasChanges = useMemo(() => {
@@ -271,6 +274,64 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
     setIsEditing(true);
   };
 
+  // Rename list: open modal for a specific target and save
+  const openRenameModal = (list?: ShoppingList) => {
+    if (list) {
+      setRenameTarget(list);
+      setRenameName(list.name || "");
+      setShowRenameModal(true);
+      return;
+    }
+    if (currentList) {
+      // Fallback: if ever called without a list, use currentList
+      setRenameTarget(currentList);
+      setRenameName(currentList.name || "");
+      setShowRenameModal(true);
+    }
+  };
+
+  const renameList = async () => {
+    const target = renameTarget;
+    if (!target) {
+      Alert.alert("Error", "No list selected to rename");
+      return;
+    }
+    const newName = renameName.trim();
+    if (!newName) {
+      Alert.alert("Error", "Please enter a valid name");
+      return;
+    }
+    try {
+      setSaving(true);
+      const response = await client.models.ShoppingList.update({
+        id: target.id,
+        name: newName,
+      } as any);
+      const updated = getResponseDataOrThrow<ShoppingList>(
+        response,
+        "Rename shopping list"
+      );
+      setShoppingLists((prev) =>
+        prev.map((l) =>
+          l.id === updated.id ? { ...l, name: updated.name } : l
+        )
+      );
+      if (currentList?.id === updated.id) {
+        setCurrentList({ ...currentList, name: updated.name });
+      }
+      setShowRenameModal(false);
+      setRenameTarget(null);
+      setRenameName("");
+      Alert.alert("Success", "List renamed");
+    } catch (err: any) {
+      console.error("Error renaming shopping list:", err);
+      const msg = err?.message || "Failed to rename list";
+      Alert.alert("Error", msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const confirmDeleteList = (list: ShoppingList) => {
     Alert.alert(
       "Delete list",
@@ -336,7 +397,16 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
         onPress={() => loadShoppingList(item)}
       >
         <View style={styles.listItemContent}>
-          <Text style={styles.listItemTitle}>{item.name}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <TouchableOpacity
+              style={styles.inlineIconBtn}
+              onPress={() => openRenameModal(item)}
+              accessibilityLabel={`Rename ${item.name}`}
+            >
+              <Ionicons name="create-outline" size={16} color="#2196F3" />
+            </TouchableOpacity>
+            <Text style={styles.listItemTitle}>{item.name}</Text>
+          </View>
           <Text style={styles.listItemSubtitle}>
             {productCount} item{productCount !== 1 ? "s" : ""} • {createdDate}
           </Text>
@@ -573,7 +643,58 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
         </View>
       </Modal>
 
-      {/* No rename modal: content changes only */}
+      {/* Rename list modal (triggered from My Lists) */}
+      <Modal
+        visible={showRenameModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowRenameModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Rename Shopping List</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Enter new name"
+              value={renameName}
+              onChangeText={setRenameName}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={() => {
+                if (!saving && renameName.trim()) {
+                  renameList();
+                }
+              }}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setShowRenameModal(false);
+                  setRenameTarget(null);
+                  setRenameName("");
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.createButton}
+                onPress={renameList}
+                disabled={saving || !renameName.trim()}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text style={styles.createButtonText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -868,6 +989,11 @@ const styles = StyleSheet.create({
   changeTextBtn: {
     color: "#2196F3",
     fontWeight: "600",
+  },
+  inlineIconBtn: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    marginRight: 4,
   },
   selectedListItem: {
     borderColor: "#4CAF50",
