@@ -347,6 +347,40 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
     );
   };
 
+  // Cancel current action: if creating a new list (first save pending), delete it; if editing, revert and exit edit mode
+  const cancelEditOrCreate = async () => {
+    if (needsFirstSave && currentList) {
+      try {
+        setSaving(true);
+        const response = await client.models.ShoppingList.delete({
+          id: currentList.id,
+        } as any);
+        getResponseDataOrThrow<any>(
+          response,
+          "Cancel new shopping list (delete draft)"
+        );
+        setShoppingLists((prev) => prev.filter((l) => l.id !== currentList.id));
+        setCurrentList(null);
+        setNeedsFirstSave(false);
+        setShowSelectHint(false);
+        onShoppingListLoaded?.([]);
+      } catch (err: any) {
+        console.error("Error cancelling new list:", err);
+        const msg = err?.message || "Failed to cancel new list";
+        Alert.alert("Error", msg);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    if (isEditing && currentList) {
+      const productIds = safeParseProductIDs(currentList.productIDs);
+      onShoppingListLoaded?.(productIds);
+      setIsEditing(false);
+    }
+  };
+
   const deleteList = async (list: ShoppingList) => {
     try {
       setSaving(true);
@@ -485,6 +519,16 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
                       </Text>
                     </>
                   )}
+                </TouchableOpacity>
+              )}
+
+              {(needsFirstSave || isEditing) && (
+                <TouchableOpacity
+                  style={styles.cancelEditButton}
+                  onPress={cancelEditOrCreate}
+                  disabled={saving}
+                >
+                  <Text style={styles.cancelEditButtonText}>Cancel</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -786,6 +830,19 @@ const styles = StyleSheet.create({
   actionButtons: {
     flexDirection: "row",
     marginBottom: 8,
+  },
+  cancelEditButton: {
+    backgroundColor: "#EEEEEE",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 8,
+  },
+  cancelEditButtonText: {
+    color: "#555",
+    fontWeight: "bold",
   },
   saveButton: {
     backgroundColor: "#2196F3",
