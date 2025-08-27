@@ -80,6 +80,7 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
   const [newListName, setNewListName] = useState("");
   const [currentList, setCurrentList] = useState<ShoppingList | null>(null);
   const [showListsModal, setShowListsModal] = useState(false);
+  const [showSelectHint, setShowSelectHint] = useState(false);
 
   // Compare selected products with current list contents to determine if there are changes
   const hasChanges = useMemo(() => {
@@ -168,6 +169,7 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
       setShoppingLists((prevLists) => [...prevLists, created]);
       setNewListName("");
       setShowNewListModal(false);
+      setShowSelectHint(true);
       Alert.alert("Success", "Shopping list created successfully");
       // Refresh lists in background to ensure server state is reflected
       fetchShoppingLists();
@@ -203,6 +205,7 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
       setShoppingLists((prevLists) =>
         prevLists.map((list) => (list.id === updated.id ? updated : list))
       );
+      setShowSelectHint(false);
       Alert.alert("Success", "Shopping list updated successfully");
     } catch (err) {
       console.error("Error updating shopping list:", err);
@@ -329,6 +332,15 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
               <Text style={styles.currentListLabel}>Current List:</Text>
               <Text style={styles.currentListName}>{currentList.name}</Text>
             </View>
+
+            {showSelectHint && selectedProducts.length === 0 && (
+              <View style={styles.hintBanner}>
+                <Ionicons name="information-circle" size={16} color="#0B61A4" />
+                <Text style={styles.hintText}>
+                  Select products below, then tap Save to add them to this list.
+                </Text>
+              </View>
+            )}
 
             <View style={styles.actionButtons}>
               <TouchableOpacity
@@ -512,6 +524,8 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
                 renderItem={renderListItem}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={styles.listContainer}
+                refreshing={loading}
+                onRefresh={fetchShoppingLists}
               />
             )}
           </View>
@@ -567,6 +581,23 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#333",
     marginRight: 8,
+  },
+  hintBanner: {
+    backgroundColor: "#E6F2FF",
+    borderColor: "#B3DAFF",
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  hintText: {
+    color: "#0B61A4",
+    marginLeft: 6,
+    fontSize: 12,
+    flex: 1,
   },
   statusBadge: {
     paddingHorizontal: 8,
