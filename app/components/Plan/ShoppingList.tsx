@@ -1,5 +1,5 @@
 // ShoppingList.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -69,6 +69,24 @@ const ShoppingList = ({
   const [productStops, setProductStops] = useState<ProductStop[]>([]);
 
   const client = generateClient() as unknown as AmplifyClient;
+
+  // Map product IDs to names for quick lookup (used by ShoppingListManager expand view)
+  const productNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of products) {
+      if (p?.id && typeof p.title === "string") {
+        map.set(p.id, p.title);
+      }
+    }
+    return map;
+  }, [products]);
+
+  const resolveProductName = useCallback(
+    (id: string): string | undefined => {
+      return productNameById.get(id);
+    },
+    [productNameById]
+  );
 
   // Fetch the current authenticated user
   useEffect(() => {
@@ -927,6 +945,7 @@ const ShoppingList = ({
             selectedProducts={selectedProducts}
             onShoppingListLoaded={handleShoppingListLoaded}
             currentUser={currentUser || undefined}
+            resolveProductName={resolveProductName}
           />
         ) : null,
     },

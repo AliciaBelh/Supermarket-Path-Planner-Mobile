@@ -87,11 +87,18 @@ interface ShoppingListManagerProps {
   currentUser?: {
     username: string;
   };
+  // Resolve a product ID to its display name
+  resolveProductName?: (id: string) => string | undefined;
 }
 
 const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
-  const { supermarketId, selectedProducts, onShoppingListLoaded, currentUser } =
-    props;
+  const {
+    supermarketId,
+    selectedProducts,
+    onShoppingListLoaded,
+    currentUser,
+    resolveProductName,
+  } = props;
   // Use the user prop passed from parent
   const client = generateClient() as unknown as AmplifyClient;
 
@@ -109,6 +116,16 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameName, setRenameName] = useState("");
   const [renameTarget, setRenameTarget] = useState<ShoppingList | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Compare selected products with current list contents to determine if there are changes
   const hasChanges = useMemo(() => {
@@ -422,6 +439,9 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
       ? new Date(item.createdAt).toLocaleDateString()
       : "Unknown date";
 
+    const isExpanded = expandedIds.has(item.id);
+    const productIdsForItem = safeParseProductIDs(item.productIDs);
+
     return (
       <TouchableOpacity
         style={[
@@ -434,6 +454,23 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <TouchableOpacity
               style={styles.inlineIconBtn}
+              onPress={() => toggleExpanded(item.id)}
+              accessibilityLabel={
+                isExpanded ? `Collapse ${item.name}` : `Expand ${item.name}`
+              }
+            >
+              <Ionicons
+                name={
+                  isExpanded
+                    ? "chevron-down-outline"
+                    : "chevron-forward-outline"
+                }
+                size={16}
+                color="#666"
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inlineIconBtn}
               onPress={() => openRenameModal(item)}
               accessibilityLabel={`Rename ${item.name}`}
             >
@@ -441,6 +478,22 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
             </TouchableOpacity>
             <Text style={styles.listItemTitle}>{item.name}</Text>
           </View>
+          {isExpanded && (
+            <View style={styles.productListContainer}>
+              {productIdsForItem.length === 0 ? (
+                <Text style={styles.productLineEmpty}>No products</Text>
+              ) : (
+                productIdsForItem.map((pid) => {
+                  const name = resolveProductName?.(pid) ?? pid;
+                  return (
+                    <Text key={pid} style={styles.productLine}>
+                      {name}
+                    </Text>
+                  );
+                })
+              )}
+            </View>
+          )}
           <Text style={styles.listItemSubtitle}>
             {productCount} item{productCount !== 1 ? "s" : ""} • {createdDate}
           </Text>
@@ -1068,6 +1121,26 @@ const styles = StyleSheet.create({
   listItemSubtitle: {
     fontSize: 14,
     color: "#666",
+  },
+  productListContainer: {
+    backgroundColor: "#FAFAFA",
+    borderWidth: 1,
+    borderColor: "#EEEEEE",
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  productLine: {
+    fontSize: 13,
+    color: "#444",
+    lineHeight: 18,
+  },
+  productLineEmpty: {
+    fontSize: 13,
+    color: "#9E9E9E",
+    fontStyle: "italic",
   },
   listItemBadge: {
     backgroundColor: "#E0E0E0",
