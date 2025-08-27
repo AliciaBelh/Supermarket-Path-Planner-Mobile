@@ -104,6 +104,7 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
   const [currentList, setCurrentList] = useState<ShoppingList | null>(null);
   const [showListsModal, setShowListsModal] = useState(false);
   const [showSelectHint, setShowSelectHint] = useState(false);
+  const [needsFirstSave, setNeedsFirstSave] = useState(false);
 
   // Compare selected products with current list contents to determine if there are changes
   const hasChanges = useMemo(() => {
@@ -175,7 +176,8 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
 
       const newList = {
         name: newListName.trim(),
-        productIDs: safeStringifyProductIDs(selectedProducts),
+        // Start with empty items so the user selects products then saves once
+        productIDs: safeStringifyProductIDs([]),
         supermarketID: supermarketId,
       };
 
@@ -191,6 +193,7 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
       setNewListName("");
       setShowNewListModal(false);
       setShowSelectHint(true);
+      setNeedsFirstSave(true);
       Alert.alert("Success", "Shopping list created successfully");
       // Refresh lists in background to ensure server state is reflected
       fetchShoppingLists();
@@ -211,12 +214,18 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
       return;
     }
 
+    if (selectedProducts.length === 0) {
+      Alert.alert("Error", "Please select at least one product before saving");
+      return;
+    }
+
     try {
       setSaving(true);
 
       const updatedList = {
         id: currentList.id,
         productIDs: safeStringifyProductIDs(selectedProducts),
+        status: "active" as ShoppingListStatus,
       };
 
       // Amplify Data client expects fields directly (no { input })
@@ -232,7 +241,8 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
         prevLists.map((list) => (list.id === updated.id ? updated : list))
       );
       setShowSelectHint(false);
-      Alert.alert("Success", "Shopping list updated successfully");
+      setNeedsFirstSave(false);
+      Alert.alert("Success", "Shopping list saved and activated");
     } catch (err) {
       console.error("Error updating shopping list:", err);
       Alert.alert("Error", "Failed to update shopping list");
@@ -244,6 +254,7 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
   const loadShoppingList = (list: ShoppingList) => {
     setCurrentList(list);
     setShowListsModal(false);
+    setNeedsFirstSave(false);
 
     // Parse product IDs and notify parent
     if (onShoppingListLoaded) {
@@ -370,39 +381,24 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
             )}
 
             <View style={styles.actionButtons}>
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={updateCurrentList}
-                disabled={saving || !hasChanges}
-              >
-                {saving ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <>
-                    <Ionicons name="save-outline" size={16} color="white" />
-                    <Text style={styles.buttonText}>
-                      {hasChanges ? "Save" : "Saved"}
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.activateButton}
-                onPress={activateList}
-                disabled={
-                  saving || selectedProducts.length === 0 || !currentList
-                }
-              >
-                {saving ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <>
-                    <Ionicons name="play" size={16} color="white" />
-                    <Text style={styles.buttonText}>Activate</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              {needsFirstSave && (
+                <TouchableOpacity
+                  style={styles.saveButton}
+                  onPress={updateCurrentList}
+                  disabled={
+                    saving || selectedProducts.length === 0 || !hasChanges
+                  }
+                >
+                  {saving ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <>
+                      <Ionicons name="save-outline" size={16} color="white" />
+                      <Text style={styles.buttonText}>Save</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         ) : (
