@@ -671,19 +671,19 @@ const ShoppingList = ({
         );
       }
 
-      console.log(`Finding optimal visit order with ${useHeuristic ? 'heuristic' : 'optimal'} TSP algorithm for ${accessPointCoords.length} products`);      const optimalAccessOrder = useHeuristic
+      console.log(`Finding optimal visit order with ${useHeuristic ? 'heuristic' : 'optimal'} TSP algorithm for ${accessPointCoords.length} products`); const optimalAccessOrder = useHeuristic
         ? tspNearestNeighbor(
-            accessPointCoords,
-            optimizedPathData.dist,
-            cols,
-            entranceAccessPoint || entranceCoord
-          )
+          accessPointCoords,
+          optimizedPathData.dist,
+          cols,
+          entranceAccessPoint || entranceCoord
+        )
         : tspHeldKarp(
-            accessPointCoords,
-            optimizedPathData.dist,
-            cols,
-            entranceAccessPoint || entranceCoord
-          );      // Step 7: Map the access points back to their product squares
+          accessPointCoords,
+          optimizedPathData.dist,
+          cols,
+          entranceAccessPoint || entranceCoord
+        );      // Step 7: Map the access points back to their product squares
       const optimalProductOrder: {
         productIndex: number;
         accessPointIndex: number;
