@@ -51,7 +51,7 @@ const getResponseDataOrThrow = <T,>(resp: any, action: string): T => {
   // Log the raw response for easier field-shape debugging
   try {
     console.debug(`[${action}] raw response:`, JSON.stringify(resp));
-  } catch {}
+  } catch { }
 
   if (hasResponseErrors(resp)) {
     console.warn(`${action} returned errors:`, resp.errors);
@@ -186,6 +186,11 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
       return;
     }
 
+    if (!currentUser?.username) {
+      Alert.alert("Error", "You must be logged in to create a shopping list");
+      return;
+    }
+
     try {
       setSaving(true);
       console.debug("Creating new shopping list", {
@@ -197,6 +202,7 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
 
       const newList = {
         name: newListName.trim(),
+        owner: currentUser.username,
         // Start with empty items so the user selects products then saves once
         productIDs: safeStringifyProductIDs([]),
         supermarketID: supermarketId,
