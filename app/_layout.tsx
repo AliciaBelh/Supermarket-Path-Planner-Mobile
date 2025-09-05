@@ -3,7 +3,7 @@ import React from "react";
 import { Stack } from "expo-router";
 import { Amplify } from "aws-amplify";
 import { Authenticator } from "@aws-amplify/ui-react-native";
-import outputs from "./amplify_outputs.json";
+import outputs from "../amplify_outputs.json";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 // Configure Amplify with your AWS resources
