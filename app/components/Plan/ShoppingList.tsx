@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   SectionList,
+  Alert,
 } from "react-native";
 import { generateClient } from "aws-amplify/api";
 import {
@@ -26,6 +27,7 @@ import StoreLayoutSection from "./StoreLayoutSection";
 import ShoppingListManager from "./ShoppingListManager";
 import { Ionicons } from "@expo/vector-icons";
 import { tspHeldKarp } from "../../utils/held_karp_tsp_optimal";
+import { tspNearestNeighbor } from "../../utils/tsp_heuristic";
 
 // Helper function to convert 2D coordinates to 1D index
 const toIndex = (row: number, col: number, cols: number): number =>
@@ -656,15 +658,32 @@ const ShoppingList = ({
       }));
 
       // Step 6: Use TSP to find optimal order to visit the access points
-      console.log("Finding optimal visit order with TSP algorithm");
-      const optimalAccessOrder = tspHeldKarp(
-        accessPointCoords,
-        optimizedPathData.dist,
-        cols,
-        entranceAccessPoint || entranceCoord
-      );
+      // Use heuristic algorithm for large numbers of products to avoid crashes
+      const TSP_OPTIMAL_THRESHOLD = 15; // Switch to heuristic for more than 15 products
+      const useHeuristic = accessPointCoords.length > TSP_OPTIMAL_THRESHOLD;
 
-      // Step 7: Map the access points back to their product squares
+      // Notify user about algorithm choice for large lists
+      if (useHeuristic) {
+        Alert.alert(
+          "Large Shopping List",
+          `You have ${selectedProducts.length} products selected. For performance, we'll use a fast heuristic algorithm that provides very good (but not necessarily optimal) paths.`,
+          [{ text: "OK" }]
+        );
+      }
+
+      console.log(`Finding optimal visit order with ${useHeuristic ? 'heuristic' : 'optimal'} TSP algorithm for ${accessPointCoords.length} products`);      const optimalAccessOrder = useHeuristic
+        ? tspNearestNeighbor(
+            accessPointCoords,
+            optimizedPathData.dist,
+            cols,
+            entranceAccessPoint || entranceCoord
+          )
+        : tspHeldKarp(
+            accessPointCoords,
+            optimizedPathData.dist,
+            cols,
+            entranceAccessPoint || entranceCoord
+          );      // Step 7: Map the access points back to their product squares
       const optimalProductOrder: {
         productIndex: number;
         accessPointIndex: number;
