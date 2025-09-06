@@ -329,7 +329,7 @@ for (let i = 0; i < optimalAccessOrder.length; i++) {
     optimalProductOrder.push({
         productIndex: productInfo.index,
         accessPointIndex: accessIdx,
-        stopNumber: i + 2 // Start counting from 2 (entrance is 1)
+        stopNumber: i + 1 // Start counting from 2 (entrance is 1)
     });
 }
 ```

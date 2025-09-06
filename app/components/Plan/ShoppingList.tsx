@@ -355,13 +355,16 @@ const ShoppingList = ({
   };
 
   /**
-   * Group access points by product and select the best one for each product
+   * Group access points by coordinates and collect all product squares that use each access point
    */
   const selectBestAccessPoints = (
     accessPoints: any[],
-    entranceCoord: { row: number; col: number } | undefined
+    entranceCoord: { row: number; col: number } | undefined,
+    productSquares: any[]
   ) => {
     const cols = layoutData[0].length;
+
+    // First, find the best access point for each product square individually
     const accessPointsByProduct = new Map<
       number,
       {
@@ -371,7 +374,7 @@ const ShoppingList = ({
       }[]
     >();
 
-    // Group access points by product
+    // Group access points by product square
     for (const point of accessPoints) {
       if (!accessPointsByProduct.has(point.productIndex)) {
         accessPointsByProduct.set(point.productIndex, []);
@@ -383,18 +386,15 @@ const ShoppingList = ({
       });
     }
 
-    // Choose best access point for each product
-    const bestAccessPoints: {
+    // Choose best access point for each product square
+    const bestAccessPointsPerProduct: {
       productIndex: number;
       walkableIndex: number;
       walkableRow: number;
       walkableCol: number;
     }[] = [];
 
-    for (const [
-      productIndex,
-      accessPoints,
-    ] of accessPointsByProduct.entries()) {
+    for (const [productIndex, accessPoints] of accessPointsByProduct.entries()) {
       let bestAccessPoint = accessPoints[0];
       let bestDistance = Infinity;
 
@@ -413,7 +413,7 @@ const ShoppingList = ({
         }
       }
 
-      bestAccessPoints.push({
+      bestAccessPointsPerProduct.push({
         productIndex,
         walkableIndex: bestAccessPoint.walkableIndex,
         walkableRow: bestAccessPoint.walkableRow,
@@ -421,7 +421,45 @@ const ShoppingList = ({
       });
     }
 
-    return bestAccessPoints;
+    // Now group by access point coordinates and collect all product squares that use each access point
+    const accessPointGroups = new Map<string, {
+      accessPoint: { row: number; col: number; walkableIndex: number };
+      productSquares: typeof productSquares;
+      allProductIds: string[];
+    }>();
+
+    for (const bestAP of bestAccessPointsPerProduct) {
+      const accessKey = `${bestAP.walkableRow},${bestAP.walkableCol}`;
+
+      if (!accessPointGroups.has(accessKey)) {
+        accessPointGroups.set(accessKey, {
+          accessPoint: {
+            row: bestAP.walkableRow,
+            col: bestAP.walkableCol,
+            walkableIndex: bestAP.walkableIndex
+          },
+          productSquares: [],
+          allProductIds: []
+        });
+      }
+
+      // Find the product square for this productIndex
+      const productSquare = productSquares.find(ps => ps.index === bestAP.productIndex);
+      if (productSquare) {
+        const group = accessPointGroups.get(accessKey)!;
+        group.productSquares.push(productSquare);
+        group.allProductIds.push(...productSquare.products);
+      }
+    }
+
+    // Log the results for debugging
+    console.log(`🔍 [ACCESS_POINTS] Found ${accessPointGroups.size} unique access points:`);
+    for (const [accessKey, group] of accessPointGroups) {
+      console.log(`🔍 [ACCESS_POINTS] Access point (${group.accessPoint.row}, ${group.accessPoint.col}): ${group.productSquares.length} squares, ${group.allProductIds.length} products`);
+      console.log(`🔍 [ACCESS_POINTS] Products: [${group.allProductIds.join(', ')}]`);
+    }
+
+    return Array.from(accessPointGroups.values());
   };
 
   /**
@@ -765,20 +803,24 @@ const ShoppingList = ({
 
         setOptimizedPath(simplePath);
 
-        // Set entrance and exit as special stops
+        // Set entrance and exit as special stops (consistent with main path numbering)
         const specialStops: ProductStop[] = [
           {
             position: [entranceCoord.row, entranceCoord.col],
-            stopNumber: 1,
+            stopNumber: 0,
             products: [],
+            isSpecial: true,
+            label: "Start",
           },
         ];
 
         if (finalDestination) {
           specialStops.push({
             position: [finalDestination.row, finalDestination.col],
-            stopNumber: 2,
+            stopNumber: 0,
             products: [],
+            isSpecial: true,
+            label: "Finish",
           });
         }
 
@@ -811,13 +853,15 @@ const ShoppingList = ({
 
       const bestAccessPoints = selectBestAccessPoints(
         accessPoints,
-        entranceAccessPoint || entranceCoord
+        entranceAccessPoint || entranceCoord,
+        productSquares
       );
 
-      // Step 5: Convert to format needed by TSP
-      const accessPointCoords = bestAccessPoints.map((point) => ({
-        row: point.walkableRow,
-        col: point.walkableCol,
+      // Step 5: Now bestAccessPoints contains grouped access points with all products
+      // Convert to format needed by TSP (coordinates only)
+      const accessPointCoords = bestAccessPoints.map((group) => ({
+        row: group.accessPoint.row,
+        col: group.accessPoint.col,
       }));
 
       // Step 6: Use TSP to find optimal order to visit the access points
@@ -834,7 +878,9 @@ const ShoppingList = ({
         );
       }
 
-      console.log(`Finding optimal visit order with ${useHeuristic ? 'heuristic' : 'optimal'} TSP algorithm for ${accessPointCoords.length} products`); const optimalAccessOrder = useHeuristic
+      console.log(`Finding optimal visit order with ${useHeuristic ? 'heuristic' : 'optimal'} TSP algorithm for ${accessPointCoords.length} access points`);
+
+      const optimalAccessOrder = useHeuristic
         ? tspNearestNeighbor(
           accessPointCoords,
           optimizedPathData.dist,
@@ -846,26 +892,38 @@ const ShoppingList = ({
           optimizedPathData.dist,
           cols,
           entranceAccessPoint || entranceCoord
-        );      // Step 7: Map the access points back to their product squares
-      const optimalProductOrder: {
-        productIndex: number;
-        accessPointIndex: number;
+        );
+
+      // Step 7: Create ordered list of access point groups (already contains all products)
+      const orderedAccessPointGroups: {
+        group: typeof bestAccessPoints[0];
         stopNumber: number;
       }[] = [];
 
-      for (let i = 0; i < optimalAccessOrder.length; i++) {
-        const accessPoint = optimalAccessOrder[i];
-        const accessIdx = toIndex(accessPoint.row, accessPoint.col, cols);
+      // Skip the first element if it's the entrance, and process only product access points
+      const productAccessPoints = optimalAccessOrder.filter((accessPoint, index) => {
+        // Check if this access point matches the entrance
+        const isEntrance = entranceAccessPoint &&
+          accessPoint.row === entranceAccessPoint.row &&
+          accessPoint.col === entranceAccessPoint.col;
 
-        for (const bestPoint of bestAccessPoints) {
-          if (bestPoint.walkableIndex === accessIdx) {
-            optimalProductOrder.push({
-              productIndex: bestPoint.productIndex,
-              accessPointIndex: accessIdx,
-              stopNumber: i + 2, // Start counting from 2 (entrance is 1)
-            });
-            break;
-          }
+        return !isEntrance; // Only include non-entrance access points
+      });
+
+      for (let i = 0; i < productAccessPoints.length; i++) {
+        const accessPoint = productAccessPoints[i];
+
+        // Find the corresponding group in bestAccessPoints
+        const group = bestAccessPoints.find(g =>
+          g.accessPoint.row === accessPoint.row &&
+          g.accessPoint.col === accessPoint.col
+        );
+
+        if (group) {
+          orderedAccessPointGroups.push({
+            group: group,
+            stopNumber: i + 1, // Start counting from 1 for product access points
+          });
         }
       }
 
@@ -873,7 +931,7 @@ const ShoppingList = ({
       console.log(`🚀 [PATH_MAIN] Starting main path generation phase`);
       console.log(`🚀 [PATH_MAIN] Entrance access point: ${entranceAccessPoint ? `(${entranceAccessPoint.row}, ${entranceAccessPoint.col})` : 'None'}`);
       console.log(`🚀 [PATH_MAIN] Destination access point: ${destinationAccessPoint ? `(${destinationAccessPoint.row}, ${destinationAccessPoint.col})` : 'None'}`);
-      console.log(`🚀 [PATH_MAIN] Optimal access order length: ${optimalAccessOrder.length}`);
+      console.log(`🚀 [PATH_MAIN] Optimal access order length: ${orderedAccessPointGroups.length}`);
 
       const walkablePath: number[][] = [];
 
@@ -954,7 +1012,7 @@ const ShoppingList = ({
       console.log(`📍 [STOPS_GEN] Creating product stops for visualization`);
       console.log(`📍 [STOPS_GEN] Entrance coord: (${entranceCoord.row}, ${entranceCoord.col})`);
       console.log(`📍 [STOPS_GEN] Final destination: ${finalDestination ? `(${finalDestination.row}, ${finalDestination.col})` : 'None'}`);
-      console.log(`📍 [STOPS_GEN] Optimal product order length: ${optimalProductOrder.length}`);
+      console.log(`📍 [STOPS_GEN] Ordered access point groups length: ${orderedAccessPointGroups.length}`);
 
       const stops: ProductStop[] = [
         // First stop is always the entrance with a special label
@@ -967,50 +1025,17 @@ const ShoppingList = ({
         },
       ];
 
-      // Group products by their access points and create stops based on unique access points
-      const accessPointGroups = new Map<string, {
-        accessPoint: { row: number; col: number };
-        productIds: string[];
-        productSquares: typeof productSquares;
-      }>();
-
-      // Group products by access point coordinates
-      optimalProductOrder.forEach((stop) => {
-        // Find the access point coordinates for this product
-        const accessPoint = bestAccessPoints.find(ap => ap.productIndex === stop.productIndex);
-        if (!accessPoint) return;
-
-        const accessKey = `${accessPoint.walkableRow},${accessPoint.walkableCol}`;
-
-        if (!accessPointGroups.has(accessKey)) {
-          accessPointGroups.set(accessKey, {
-            accessPoint: { row: accessPoint.walkableRow, col: accessPoint.walkableCol },
-            productIds: [],
-            productSquares: []
-          });
-        }
-
-        // Find the product square and its products
-        const productSquare = productSquares.find(p => p.index === stop.productIndex);
-        if (productSquare) {
-          const group = accessPointGroups.get(accessKey)!;
-          // Add product IDs from this square to the group
-          group.productIds.push(...(productSquare.products || []));
-          group.productSquares.push(productSquare);
-        }
-      });
-
-      // Create stops based on unique access points
-      let stopNumber = 1;
-      for (const [accessKey, group] of accessPointGroups) {
-        console.log(`📍 [STOPS_GEN] Adding access point stop ${stopNumber}: (${group.accessPoint.row}, ${group.accessPoint.col}) with ${group.productIds.length} products from ${group.productSquares.length} squares`);
+      // Create stops directly from ordered access point groups (no more grouping needed!)
+      for (const orderedGroup of orderedAccessPointGroups) {
+        const group = orderedGroup.group;
+        console.log(`📍 [STOPS_GEN] Adding access point stop ${orderedGroup.stopNumber}: (${group.accessPoint.row}, ${group.accessPoint.col}) with ${group.allProductIds.length} products from ${group.productSquares.length} squares`);
+        console.log(`📍 [STOPS_GEN] Stop ${orderedGroup.stopNumber} products: [${group.allProductIds.join(', ')}]`);
 
         stops.push({
           position: [group.accessPoint.row, group.accessPoint.col] as [number, number],
-          stopNumber: stopNumber,
-          products: group.productIds,
+          stopNumber: orderedGroup.stopNumber,
+          products: group.allProductIds,
         });
-        stopNumber++;
       }
 
       // Add final destination as last stop if available
