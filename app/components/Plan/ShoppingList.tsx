@@ -209,6 +209,99 @@ const ShoppingList = ({
   // MODULARIZED PATH GENERATION FUNCTIONS
 
   /**
+   * Generate product square stops instead of access point stops for better UX
+   * Returns product squares directly with their sequential numbering
+   */
+  const generateProductSquareStops = (productSquares: any[], entranceCoord: { row: number; col: number }, finalDestination: { row: number; col: number } | null) => {
+    const cols = layoutData[0].length;
+    console.log(`🎯 [PRODUCT_STOPS] Generating product square stops for ${productSquares.length} squares`);
+
+    // Check if we have optimized path data
+    if (!optimizedPathData?.dist) {
+      console.error(`🎯 [PRODUCT_STOPS] No optimized path data available`);
+      return { stops: [], optimalProductOrder: [] };
+    }
+
+    // Convert product squares to coordinates for TSP
+    const productCoords = productSquares.map((square) => ({
+      row: square.row,
+      col: square.col,
+    }));
+
+    // Use TSP to find optimal order to visit the product squares
+    const TSP_OPTIMAL_THRESHOLD = 15;
+    const useHeuristic = productCoords.length > TSP_OPTIMAL_THRESHOLD;
+
+    console.log(`🎯 [PRODUCT_STOPS] Using ${useHeuristic ? 'heuristic' : 'optimal'} TSP algorithm for ${productCoords.length} product squares`);
+
+    const optimalProductOrder = useHeuristic
+      ? tspNearestNeighbor(
+          productCoords,
+          optimizedPathData.dist,
+          cols,
+          entranceCoord
+        )
+      : tspHeldKarp(
+          productCoords,
+          optimizedPathData.dist,
+          cols,
+          entranceCoord
+        );
+
+    // Create ordered list of product stops
+    console.log(`🎯 [PRODUCT_STOPS] Creating stops for visualization`);
+
+    const stops: ProductStop[] = [
+      // First stop is always the entrance
+      {
+        position: [entranceCoord.row, entranceCoord.col],
+        stopNumber: 0,
+        products: [],
+        isSpecial: true,
+        label: "Start",
+      },
+    ];
+
+    // Add product squares in optimal order (skip entrance if it's included)
+    const productSquaresToProcess = optimalProductOrder.filter(coord =>
+      !(coord.row === entranceCoord.row && coord.col === entranceCoord.col)
+    );
+
+    for (let i = 0; i < productSquaresToProcess.length; i++) {
+      const productCoord = productSquaresToProcess[i];
+
+      // Find the corresponding product square
+      const productSquare = productSquares.find(square =>
+        square.row === productCoord.row && square.col === productCoord.col
+      );
+
+      if (productSquare) {
+        console.log(`🎯 [PRODUCT_STOPS] Adding product square stop ${i + 1}: (${productSquare.row}, ${productSquare.col}) with ${productSquare.products.length} products`);
+        console.log(`🎯 [PRODUCT_STOPS] Stop ${i + 1} products: [${productSquare.products.join(', ')}]`);
+
+        stops.push({
+          position: [productSquare.row, productSquare.col] as [number, number],
+          stopNumber: i + 1,
+          products: productSquare.products,
+        });
+      }
+    }
+
+    // Add final destination as last stop if available
+    if (finalDestination) {
+      console.log(`🎯 [PRODUCT_STOPS] Adding final destination stop: (${finalDestination.row}, ${finalDestination.col})`);
+      stops.push({
+        position: [finalDestination.row, finalDestination.col],
+        stopNumber: 0,
+        products: [],
+        isSpecial: true,
+        label: "Finish",
+      });
+    }
+
+    console.log(`🎯 [PRODUCT_STOPS] Created ${stops.length} total stops`);
+    return { stops, optimalProductOrder };
+  };  /**
    * Helper function to check if a square is walkable (only empty squares are walkable)
    */
   const isWalkable = (row: number, col: number): boolean => {
@@ -829,11 +922,36 @@ const ShoppingList = ({
         return;
       }
 
-      // Step 3: Find walkable access points for each product square
+      // Step 3-7: Use new product square approach instead of access points
+      console.log(`🎯 [NEW_APPROACH] Switching to product square stops instead of access points`);
+
+      // Notify user about algorithm choice for large lists
+      const TSP_OPTIMAL_THRESHOLD = 15;
+      const useHeuristic = productSquares.length > TSP_OPTIMAL_THRESHOLD;
+
+      if (useHeuristic) {
+        Alert.alert(
+          "Large Shopping List",
+          `You have ${selectedProducts.length} products selected. For performance, we'll use a fast heuristic algorithm that provides very good (but not necessarily optimal) paths.`,
+          [{ text: "OK" }]
+        );
+      }
+
+      // Generate product square stops with TSP optimization
+      const { stops: productStopsArray, optimalProductOrder } = generateProductSquareStops(
+        productSquares,
+        entranceCoord,
+        finalDestination || null
+      );
+
+      // Set the product stops for visualization
+      setProductStops(productStopsArray);      // For the walkable path, we need access points to navigate around product squares
+      console.log(`🚀 [PATH_GEN] Generating walkable path through access points while displaying numbers on product squares`);
+
+      // Find access points for navigation purposes (but don't display numbers on them)
       const accessPoints = findProductAccessPoints(productSquares);
 
-      // Step 4: Select the best access point for each product square
-      // For entrance and exit, find adjacent walkable squares
+      // Find access points for entrance and destination
       const entranceAccessPoints = findAdjacentWalkableSquares(
         entranceCoord.row,
         entranceCoord.col
@@ -851,87 +969,43 @@ const ShoppingList = ({
           destAccessPoints.length > 0 ? destAccessPoints[0] : null;
       }
 
-      const bestAccessPoints = selectBestAccessPoints(
-        accessPoints,
-        entranceAccessPoint || entranceCoord,
-        productSquares
-      );
+      // For each product square in the optimal order, find its best access point
+      const orderedAccessPoints: { row: number; col: number }[] = [];
 
-      // Step 5: Now bestAccessPoints contains grouped access points with all products
-      // Convert to format needed by TSP (coordinates only)
-      const accessPointCoords = bestAccessPoints.map((group) => ({
-        row: group.accessPoint.row,
-        col: group.accessPoint.col,
-      }));
+      for (const productCoord of optimalProductOrder) {
+        // Find access points for this specific product square
+        const productIndex = toIndex(productCoord.row, productCoord.col, cols);
+        const productAccessPoints = accessPoints.filter(ap => ap.productIndex === productIndex);
 
-      // Step 6: Use TSP to find optimal order to visit the access points
-      // Use heuristic algorithm for large numbers of products to avoid crashes
-      const TSP_OPTIMAL_THRESHOLD = 15; // Switch to heuristic for more than 15 products
-      const useHeuristic = accessPointCoords.length > TSP_OPTIMAL_THRESHOLD;
+        if (productAccessPoints.length > 0) {
+          // Choose the best access point (closest to entrance for simplicity)
+          let bestAccessPoint = productAccessPoints[0];
+          let bestDistance = Infinity;
 
-      // Notify user about algorithm choice for large lists
-      if (useHeuristic) {
-        Alert.alert(
-          "Large Shopping List",
-          `You have ${selectedProducts.length} products selected. For performance, we'll use a fast heuristic algorithm that provides very good (but not necessarily optimal) paths.`,
-          [{ text: "OK" }]
-        );
-      }
+          const entranceIndex = entranceCoord ? toIndex(entranceCoord.row, entranceCoord.col, cols) : -1;
 
-      console.log(`Finding optimal visit order with ${useHeuristic ? 'heuristic' : 'optimal'} TSP algorithm for ${accessPointCoords.length} access points`);
+          if (entranceIndex !== -1 && optimizedPathData?.dist) {
+            for (const ap of productAccessPoints) {
+              const distance = optimizedPathData.dist[entranceIndex][ap.walkableIndex];
+              if (distance < bestDistance) {
+                bestDistance = distance;
+                bestAccessPoint = ap;
+              }
+            }
+          }
 
-      const optimalAccessOrder = useHeuristic
-        ? tspNearestNeighbor(
-          accessPointCoords,
-          optimizedPathData.dist,
-          cols,
-          entranceAccessPoint || entranceCoord
-        )
-        : tspHeldKarp(
-          accessPointCoords,
-          optimizedPathData.dist,
-          cols,
-          entranceAccessPoint || entranceCoord
-        );
-
-      // Step 7: Create ordered list of access point groups (already contains all products)
-      const orderedAccessPointGroups: {
-        group: typeof bestAccessPoints[0];
-        stopNumber: number;
-      }[] = [];
-
-      // Skip the first element if it's the entrance, and process only product access points
-      const productAccessPoints = optimalAccessOrder.filter((accessPoint, index) => {
-        // Check if this access point matches the entrance
-        const isEntrance = entranceAccessPoint &&
-          accessPoint.row === entranceAccessPoint.row &&
-          accessPoint.col === entranceAccessPoint.col;
-
-        return !isEntrance; // Only include non-entrance access points
-      });
-
-      for (let i = 0; i < productAccessPoints.length; i++) {
-        const accessPoint = productAccessPoints[i];
-
-        // Find the corresponding group in bestAccessPoints
-        const group = bestAccessPoints.find(g =>
-          g.accessPoint.row === accessPoint.row &&
-          g.accessPoint.col === accessPoint.col
-        );
-
-        if (group) {
-          orderedAccessPointGroups.push({
-            group: group,
-            stopNumber: i + 1, // Start counting from 1 for product access points
+          orderedAccessPoints.push({
+            row: bestAccessPoint.walkableRow,
+            col: bestAccessPoint.walkableCol
           });
         }
       }
 
-      // Step 8: Generate a path through walkable squares only
+      // Step 8: Generate a path through walkable access points (for navigation)
       console.log(`🚀 [PATH_MAIN] Starting main path generation phase`);
       console.log(`🚀 [PATH_MAIN] Entrance access point: ${entranceAccessPoint ? `(${entranceAccessPoint.row}, ${entranceAccessPoint.col})` : 'None'}`);
       console.log(`🚀 [PATH_MAIN] Destination access point: ${destinationAccessPoint ? `(${destinationAccessPoint.row}, ${destinationAccessPoint.col})` : 'None'}`);
-      console.log(`🚀 [PATH_MAIN] Optimal access order length: ${orderedAccessPointGroups.length}`);
+      console.log(`🚀 [PATH_MAIN] Ordered access points length: ${orderedAccessPoints.length}`);
 
       const walkablePath: number[][] = [];
 
@@ -947,10 +1021,10 @@ const ShoppingList = ({
       console.log(`🚀 [PATH_MAIN] Starting position: (${lastPosition.row}, ${lastPosition.col})`);
 
       // Generate paths between access points
-      console.log(`🚀 [PATH_MAIN] Generating paths between ${optimalAccessOrder.length} access points`);
-      for (let i = 0; i < optimalAccessOrder.length; i++) {
-        const accessPoint = optimalAccessOrder[i];
-        console.log(`🚀 [PATH_MAIN] === Processing access point ${i + 1}/${optimalAccessOrder.length}: (${accessPoint.row}, ${accessPoint.col}) ===`);
+      console.log(`🚀 [PATH_MAIN] Generating paths between ${orderedAccessPoints.length} access points`);
+      for (let i = 0; i < orderedAccessPoints.length; i++) {
+        const accessPoint = orderedAccessPoints[i];
+        console.log(`🚀 [PATH_MAIN] === Processing access point ${i + 1}/${orderedAccessPoints.length}: (${accessPoint.row}, ${accessPoint.col}) ===`);
 
         if (lastPosition) {
           console.log(`🚀 [PATH_MAIN] Generating path from (${lastPosition.row}, ${lastPosition.col}) to (${accessPoint.row}, ${accessPoint.col})`);
@@ -1007,50 +1081,9 @@ const ShoppingList = ({
         console.warn(`⚠️ [PATH_MAIN] No last position available for destination path`);
       }
 
-      // Inside the generateOptimizedPath function in ShoppingList.tsx
-      // Step 9: Create product stops for visualization including entrance and exit
-      console.log(`📍 [STOPS_GEN] Creating product stops for visualization`);
-      console.log(`📍 [STOPS_GEN] Entrance coord: (${entranceCoord.row}, ${entranceCoord.col})`);
-      console.log(`📍 [STOPS_GEN] Final destination: ${finalDestination ? `(${finalDestination.row}, ${finalDestination.col})` : 'None'}`);
-      console.log(`📍 [STOPS_GEN] Ordered access point groups length: ${orderedAccessPointGroups.length}`);
-
-      const stops: ProductStop[] = [
-        // First stop is always the entrance with a special label
-        {
-          position: [entranceCoord.row, entranceCoord.col],
-          stopNumber: 0, // Use 0 or another special value to indicate "Start"
-          products: [],
-          isSpecial: true, // Add a flag to indicate this is a special stop
-          label: "Start", // Add a custom label
-        },
-      ];
-
-      // Create stops directly from ordered access point groups (no more grouping needed!)
-      for (const orderedGroup of orderedAccessPointGroups) {
-        const group = orderedGroup.group;
-        console.log(`📍 [STOPS_GEN] Adding access point stop ${orderedGroup.stopNumber}: (${group.accessPoint.row}, ${group.accessPoint.col}) with ${group.allProductIds.length} products from ${group.productSquares.length} squares`);
-        console.log(`📍 [STOPS_GEN] Stop ${orderedGroup.stopNumber} products: [${group.allProductIds.join(', ')}]`);
-
-        stops.push({
-          position: [group.accessPoint.row, group.accessPoint.col] as [number, number],
-          stopNumber: orderedGroup.stopNumber,
-          products: group.allProductIds,
-        });
-      }
-
-      // Add final destination as last stop if available
-      if (finalDestination) {
-        console.log(`📍 [STOPS_GEN] Adding final destination stop: (${finalDestination.row}, ${finalDestination.col})`);
-        stops.push({
-          position: [finalDestination.row, finalDestination.col],
-          stopNumber: 0, // Use 0 or another special value to indicate "Finish"
-          products: [],
-          isSpecial: true, // Flag to indicate special stop
-          label: "Finish", // Custom label
-        });
-      }
-
-      console.log(`📍 [STOPS_GEN] Created ${stops.length} total stops`);
+      // Step 9: Product stops were already created in generateProductSquareStops()
+      console.log(`📍 [STOPS_GEN] Product stops already created: ${productStopsArray.length} total stops`);
+      console.log(`📍 [STOPS_GEN] Stops summary: Start + ${productStopsArray.filter((s: ProductStop) => !s.isSpecial).length} product squares + ${productStopsArray.filter((s: ProductStop) => s.isSpecial && s.label === 'Finish').length > 0 ? 'Finish' : 'No finish'}`);
 
       // Step 10: Remove duplicates and validate the path
       console.log(`🏁 [PATH_FINAL] Starting final path processing`);
@@ -1086,11 +1119,10 @@ const ShoppingList = ({
       }
 
       setOptimizedPath(validatedPath);
-      setProductStops(stops);
       setShowOptimizedPath(true);
 
       console.log(`✅ [PATH_COMPLETE] Path generation completed successfully!`);
-      console.log(`✅ [PATH_COMPLETE] Generated optimized path with ${validatedPath.length} steps and ${stops.length} stops`);
+      console.log(`✅ [PATH_COMPLETE] Generated optimized path with ${validatedPath.length} steps and ${productStopsArray.length} stops`);
       console.log(`✅ [PATH_COMPLETE] Path generation phase finished`);
       console.log(`===============================================`);
     } else {

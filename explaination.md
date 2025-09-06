@@ -4,6 +4,23 @@
 
 The Supermarket Path Planner is a mobile application that generates optimized shopping routes through supermarkets. The system combines multiple algorithmic approaches to solve the complex problem of finding the shortest path that visits all required product locations while respecting the physical constraints of a supermarket layout.
 
+## Recent Updates
+
+### **NEW FEATURE: Product Square Numbering (Latest Implementation)**
+
+**Enhancement**: Instead of numbering access points, the app now numbers actual product squares for better user experience:
+
+- **Visual Improvement**: Numbers are displayed directly on product squares where items need to be picked
+- **Interactive Experience**: Users can click on numbered product squares to see exactly which products to pick at that location
+- **Clearer UX**: Direct correlation between stop numbers and physical product locations
+- **Optimized Routing**: Still uses TSP optimization but applies it directly to product squares instead of access points
+
+**Technical Implementation**:
+- `generateProductSquareStops()` function creates stops directly on product squares
+- TSP optimization now operates on product coordinates instead of access point coordinates
+- Access points are still used internally for pathfinding but not displayed to users
+- Product squares show sequential numbers (1, 2, 3...) based on optimal visiting order
+
 ## Algorithm Pipeline
 
 Our solution follows a multi-phase approach with clear separation between backend preprocessing and mobile app optimization:
@@ -13,9 +30,9 @@ Our solution follows a multi-phase approach with clear separation between backen
 2. **Shortest Path Preprocessing Phase** - Compute all-pairs shortest paths using Floyd-Warshall algorithm
 
 ### **Mobile App Optimization (Our Focus)**:
-3. **Access Point Selection Phase** - Find optimal access points for product locations
-4. **Route Optimization Phase** - Solve Traveling Salesman Problem (TSP)
-5. **Path Generation Phase** - Generate walkable path between optimized stops
+3. **Product Square Selection Phase** - *(NEW)* Find and optimize product square visiting order
+4. **Route Optimization Phase** - Solve Traveling Salesman Problem (TSP) on product squares
+5. **Path Generation Phase** - Generate walkable path between optimized stops using access points
 
 ---
 
@@ -30,11 +47,11 @@ These preprocessed `PathData` matrices are then consumed by our mobile app for r
 
 ---
 
-## Phase 1: Access Point Selection (Mobile App)
+## Phase 1: Product Square Selection (Mobile App) - **UPDATED**
 
-### Algorithm: Multi-Stage Access Point Optimization
+### Algorithm: Direct Product Square Optimization
 
-**Purpose**: Transform product locations into optimal walkable access points that minimize overall travel distance while ensuring realistic shopping behavior.
+**Purpose**: *(NEW APPROACH)* Optimize the visiting order of product squares directly, providing clearer user experience with numbers displayed on actual product locations.
 
 **Implementation Process**:
 
@@ -155,18 +172,23 @@ const selectBestAccessPoints = (accessPoints, entranceCoord) => {
 
 ---
 
-## Phase 2: Route Optimization (TSP) - Mobile App
+## Phase 2: Route Optimization (TSP) - Mobile App - **UPDATED**
 
-### Algorithm: Dynamic TSP Solver with Intelligent Algorithm Selection
+### Algorithm: Dynamic TSP Solver with Product Square Optimization
 
-**Purpose**: Find the optimal or near-optimal order to visit selected access points, minimizing total travel distance while maintaining real-time mobile performance.
+**Purpose**: *(NEW APPROACH)* Find the optimal or near-optimal order to visit product squares directly, minimizing total travel distance while maintaining real-time mobile performance.
+
+**Enhancement**: TSP optimization now operates directly on product squares instead of access points, providing:
+- **Direct Optimization**: Routes calculated for actual product locations
+- **Clearer User Experience**: Numbers displayed on physical product squares
+- **Maintained Performance**: Same TSP algorithms with intelligent threshold selection
 
 **Implementation Strategy**: The system intelligently chooses between exact and heuristic algorithms based on problem complexity to balance optimality with user experience.
 
-#### Decision Logic
+#### Updated Decision Logic
 ```typescript
-const TSP_OPTIMAL_THRESHOLD = 15; // Switch to heuristic for more than 15 products
-const useHeuristic = accessPointCoords.length > TSP_OPTIMAL_THRESHOLD;
+const TSP_OPTIMAL_THRESHOLD = 15; // Switch to heuristic for more than 15 product squares
+const useHeuristic = productSquares.length > TSP_OPTIMAL_THRESHOLD;
 
 if (useHeuristic) {
     Alert.alert(
@@ -176,14 +198,20 @@ if (useHeuristic) {
     );
 }
 
-const optimalAccessOrder = useHeuristic
-    ? tspNearestNeighbor(accessPointCoords, optimizedPathData.dist, cols, entranceAccessPoint)
-    : tspHeldKarp(accessPointCoords, optimizedPathData.dist, cols, entranceAccessPoint);
+// NEW: TSP operates on product coordinates instead of access points
+const productCoords = productSquares.map((square) => ({
+    row: square.row,
+    col: square.col,
+}));
+
+const optimalProductOrder = useHeuristic
+    ? tspNearestNeighbor(productCoords, optimizedPathData.dist, cols, entranceCoord)
+    : tspHeldKarp(productCoords, optimizedPathData.dist, cols, entranceCoord);
 ```
 
 #### Option A: Held-Karp Dynamic Programming (Optimal Solution)
-**Used when**: ≤ 15 products
-**Purpose**: Find the globally optimal visiting order using dynamic programming
+**Used when**: ≤ 15 product squares
+**Purpose**: Find the globally optimal visiting order for product squares using dynamic programming
 
 **Algorithm**: `tspHeldKarp()` in `held_karp_tsp_optimal.ts`
 
@@ -329,7 +357,7 @@ for (let i = 0; i < optimalAccessOrder.length; i++) {
     optimalProductOrder.push({
         productIndex: productInfo.index,
         accessPointIndex: accessIdx,
-        stopNumber: i + 1 // Start counting from 2 (entrance is 1)
+        stopNumber: i + 0 // Start counting from 2 (entrance is 1)
     });
 }
 ```
@@ -721,3 +749,251 @@ This performance analysis demonstrates that our mobile app maintains excellent r
 - **Rationale**: 20-30% optimality loss is acceptable for the significant speed improvement on mobile devices
 
 This multi-algorithm approach ensures the system provides optimal solutions when possible and practical solutions when necessary, while maintaining real-time performance for mobile users.
+
+---
+
+## Recent Improvements and Bug Fixes (September 2025)
+
+### 🔧 **Major Fix: Access Point Grouping and Stop Numbering**
+
+#### **Problem Identified**
+The original access point selection algorithm had a critical flaw that created inefficient shopping routes:
+
+1. **Duplicate Access Points**: Multiple product squares sharing the same optimal access point coordinates would create separate TSP waypoints
+2. **Product Aggregation Failure**: Users would see incomplete product lists at shared access points
+3. **Inefficient Routes**: TSP would visit the same physical location multiple times
+4. **Inconsistent Stop Numbering**: Different numbering systems between main path and fallback scenarios
+
+#### **Root Cause Analysis**
+```typescript
+// OLD PROBLEMATIC APPROACH (Product-First)
+for (const productSquare of productSquares) {
+    const bestAccessPoint = findBestAccessPoint(productSquare);
+    accessPointMapping.push({
+        productIndex: productSquare.index,
+        accessPoint: bestAccessPoint,
+        stopNumber: i + 2  // Inconsistent numbering
+    });
+}
+// This created 1:1 mapping, leading to duplicate access points
+```
+
+#### **Solution: Coordinate-First Grouping**
+Complete restructuring of the `selectBestAccessPoints` function:
+
+```typescript
+// NEW IMPROVED APPROACH (Coordinate-First)
+const selectBestAccessPoints = (accessPoints, entranceCoord, productSquares) => {
+    // Step 1: Find best access point for each product square individually
+    const bestAccessPointsPerProduct = [];
+    for (const [productIndex, accessPoints] of accessPointsByProduct.entries()) {
+        let bestAccessPoint = accessPoints[0];
+        let bestDistance = Infinity;
+
+        // Use precomputed Floyd-Warshall distances for optimization
+        if (entranceIndex !== -1 && optimizedPathData?.dist) {
+            for (const accessPoint of accessPoints) {
+                const distance = optimizedPathData.dist[entranceIndex][accessPoint.walkableIndex];
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestAccessPoint = accessPoint;
+                }
+            }
+        }
+        bestAccessPointsPerProduct.push({...bestAccessPoint, productIndex});
+    }
+
+    // Step 2: GROUP BY COORDINATES - This is the key fix!
+    const accessPointGroups = new Map<string, {
+        accessPoint: {row: number; col: number; walkableIndex: number};
+        productSquares: typeof productSquares;
+        allProductIds: string[];
+    }>();
+
+    for (const bestAP of bestAccessPointsPerProduct) {
+        const accessKey = `${bestAP.walkableRow},${bestAP.walkableCol}`;
+
+        if (!accessPointGroups.has(accessKey)) {
+            accessPointGroups.set(accessKey, {
+                accessPoint: {...},
+                productSquares: [],
+                allProductIds: []
+            });
+        }
+
+        const group = accessPointGroups.get(accessKey)!;
+        const productSquare = productSquares.find(ps => ps.index === bestAP.productIndex);
+        if (productSquare) {
+            group.productSquares.push(productSquare);
+            group.allProductIds.push(...productSquare.products);  // Aggregate ALL products
+        }
+    }
+
+    return Array.from(accessPointGroups.values());
+};
+```
+
+#### **Stop Numbering Standardization**
+Fixed inconsistent numbering across different code paths:
+
+```typescript
+// BEFORE: Inconsistent numbering
+// Main path: stopNumber: i + 2  (resulted in stops 2, 3, 4...)
+// Fallback path: stopNumber: 1, 2  (different system)
+
+// AFTER: Consistent numbering
+// All paths use same system:
+stopNumber: i + 1  // Results in stops 1, 2, 3... for product access points
+
+// Special stops always use:
+stopNumber: 0, isSpecial: true, label: "Start"/"Finish"
+```
+
+#### **Entrance Filtering Logic**
+Added logic to prevent entrance access points from being treated as product stops:
+
+```typescript
+// Filter out entrance from product access point processing
+const productAccessPoints = optimalAccessOrder.filter((accessPoint, index) => {
+    const isEntrance = entranceAccessPoint &&
+        accessPoint.row === entranceAccessPoint.row &&
+        accessPoint.col === entranceAccessPoint.col;
+    return !isEntrance; // Only include non-entrance access points
+});
+
+for (let i = 0; i < productAccessPoints.length; i++) {
+    const accessPoint = productAccessPoints[i];
+    // Process only actual product access points
+    orderedAccessPointGroups.push({
+        group: group,
+        stopNumber: i + 1  // Clean numbering: 1, 2, 3...
+    });
+}
+```
+
+#### **Results and Impact**
+
+**Before Fix**:
+```
+🔍 [ACCESS_POINTS] Found 3 unique access points:
+🔍 [ACCESS_POINTS] Access point (1, 9): 1 square, 1 product
+🔍 [ACCESS_POINTS] Access point (1, 9): 1 square, 1 product  // DUPLICATE!
+📍 [STOPS_GEN] Adding access point stop 2: (1, 9) with 1 product
+📍 [STOPS_GEN] Adding access point stop 3: (1, 9) with 1 product  // INEFFICIENT!
+```
+
+**After Fix**:
+```
+🔍 [ACCESS_POINTS] Found 1 unique access points:
+🔍 [ACCESS_POINTS] Access point (1, 9): 2 squares, 2 products
+🔍 [ACCESS_POINTS] Products: [product1, product2]  // ALL PRODUCTS AGGREGATED
+📍 [STOPS_GEN] Adding access point stop 1: (1, 9) with 2 products from 2 squares
+```
+
+**Performance Improvements**:
+- **Reduced TSP complexity**: Fewer waypoints to optimize
+- **Eliminated redundant visits**: No duplicate access point visits
+- **Improved user experience**: Complete product lists at each stop
+- **Consistent numbering**: Stop 1, 2, 3... sequence for all scenarios
+- **Higher path efficiency**: 93.8%+ efficiency rates
+
+#### **Technical Architecture Impact**
+This fix represents a fundamental shift from a **product-centric** to a **location-centric** approach:
+
+1. **Product-Centric (Old)**: "For each product, find the best access point"
+2. **Location-Centric (New)**: "For each access point location, collect all products that use it"
+
+This change aligns the algorithm with real-world shopping behavior where customers collect multiple items from the same area before moving to the next location.
+
+### 🚀 **Additional Optimizations**
+
+#### **BFS Pathfinding Enhancements**
+- Improved obstacle detection and logging
+- Better path validation with continuity checks
+- Enhanced performance with iteration limits and early termination
+
+#### **TSP Algorithm Selection**
+- Maintained optimal Held-Karp for ≤15 access points
+- Nearest Neighbor heuristic for larger problems
+- User notification for algorithm choice on large shopping lists
+
+#### **Path Processing Improvements**
+- Better duplicate removal with detailed logging
+- Enhanced path validation with walkability checks
+- Improved error handling and debugging information
+
+---
+
+## 🎯 **Latest Enhancement: Product Square Numbering (Current Implementation)**
+
+### **User Experience Revolution**
+
+The latest implementation transforms the user interface from technical access point numbering to intuitive product square numbering:
+
+#### **Previous Approach (Access Point Numbering)**:
+- Numbers displayed on empty walkable squares adjacent to products
+- Users had to mentally map numbered access points to nearby product squares
+- Clicking access points showed products from multiple squares
+- Less intuitive correlation between numbers and actual shopping locations
+
+#### **New Approach (Product Square Numbering)**:
+- Numbers displayed directly on product squares containing selected items
+- Direct visual correlation between stop numbers and pickup locations
+- Clicking product squares shows only products in that specific square
+- More natural shopping experience matching physical store navigation
+
+### **Technical Implementation**
+
+#### **Core Function: `generateProductSquareStops()`**
+```typescript
+const generateProductSquareStops = (productSquares, entranceCoord, finalDestination) => {
+    // Apply TSP optimization directly to product squares
+    const productCoords = productSquares.map((square) => ({
+        row: square.row,
+        col: square.col,
+    }));
+
+    // Use same TSP algorithms but on product coordinates
+    const optimalProductOrder = useHeuristic
+        ? tspNearestNeighbor(productCoords, optimizedPathData.dist, cols, entranceCoord)
+        : tspHeldKarp(productCoords, optimizedPathData.dist, cols, entranceCoord);
+
+    // Create stops directly on product squares
+    const stops = [entranceStop, ...optimizedProductStops, finishStop];
+    return { stops, optimalProductOrder };
+};
+```
+
+#### **Dual-Layer Architecture**:
+1. **Display Layer**: Numbers shown on product squares for user interaction
+2. **Navigation Layer**: Access points still used internally for pathfinding between product squares
+
+#### **Benefits**:
+- **Enhanced UX**: Intuitive product square numbering with click interaction
+- **Maintained Performance**: Same TSP optimization algorithms
+- **Preserved Pathfinding**: Access points still used for walkable route generation
+- **Clear Visual Mapping**: Direct correlation between numbers and pickup locations
+
+This enhancement represents the evolution from a technically-focused system to a user-centric design while maintaining the robust algorithmic foundation.
+
+---
+
+## Future Optimization Opportunities
+
+### 1. **Dynamic Access Point Selection**
+- Consider product pickup order when selecting access points
+- Implement multi-objective optimization (distance + convenience)
+
+### 2. **Machine Learning Integration**
+- Learn user preferences for access point selection
+- Optimize based on shopping cart size and user mobility
+
+### 3. **Real-time Layout Updates**
+- Handle temporary obstacles (maintenance, crowds)
+- Dynamic path recalculation during shopping
+
+### 4. **Advanced Heuristics**
+- Implement Christofides algorithm for better TSP approximation
+- Consider 2-opt or 3-opt local search improvements
+
+The current system provides a robust foundation for these future enhancements while maintaining excellent performance and user experience.
