@@ -236,17 +236,17 @@ const ShoppingList = ({
 
     const optimalProductOrder = useHeuristic
       ? tspNearestNeighbor(
-          productCoords,
-          optimizedPathData.dist,
-          cols,
-          entranceCoord
-        )
+        productCoords,
+        optimizedPathData.dist,
+        cols,
+        entranceCoord
+      )
       : tspHeldKarp(
-          productCoords,
-          optimizedPathData.dist,
-          cols,
-          entranceCoord
-        );
+        productCoords,
+        optimizedPathData.dist,
+        cols,
+        entranceCoord
+      );
 
     // Create ordered list of product stops
     console.log(`🎯 [PRODUCT_STOPS] Creating stops for visualization`);

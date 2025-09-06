@@ -446,7 +446,14 @@ const ShoppingListManager: React.FC<ShoppingListManagerProps> = (props) => {
       : "Unknown date";
 
     const isExpanded = expandedIds.has(item.id);
-    const productIdsForItem = safeParseProductIDs(item.productIDs);
+    const rawProductIds = safeParseProductIDs(item.productIDs);
+
+    // Sort products lexicographically by their display names
+    const productIdsForItem = rawProductIds.sort((a, b) => {
+      const nameA = resolveProductName?.(a) ?? a;
+      const nameB = resolveProductName?.(b) ?? b;
+      return nameA.localeCompare(nameB);
+    });
 
     return (
       <TouchableOpacity
