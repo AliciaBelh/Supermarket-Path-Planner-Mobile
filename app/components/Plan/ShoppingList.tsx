@@ -143,14 +143,64 @@ const ShoppingList = ({
 
         setSupermarket(supermarketData);
 
-        // Fetch products for this supermarket
-        const productsResponse = await client.models.Product.list({
-          filter: { supermarketID: { eq: supermarketId } },
-        });
+        // Fetch ALL products for this supermarket (handle pagination)
+        const listAllProductsForSupermarket = async (
+          id: string
+        ): Promise<Product[]> => {
+          let results: Product[] = [];
+          let nextToken: string | undefined = undefined;
+          let page = 1;
 
-        if (productsResponse.data && productsResponse.data.length > 0) {
-          console.log("Products Count:", productsResponse.data.length);
-          setProducts(productsResponse.data);
+          // Some Amplify clients page results (often 50/100). Loop until nextToken is exhausted.
+          while (true) {
+            const params: any = {
+              filter: { supermarketID: { eq: id } },
+              limit: 200, // ask for a larger page size if supported
+            };
+            if (nextToken) params.nextToken = nextToken;
+
+            const resp = await (client as any).models.Product.list(params);
+
+            // Normalize items array across potential response shapes
+            const pageItems: Product[] = Array.isArray(resp?.data)
+              ? (resp.data as Product[])
+              : Array.isArray(resp?.items)
+              ? (resp.items as Product[])
+              : Array.isArray(resp?.data?.items)
+              ? (resp.data.items as Product[])
+              : [];
+
+            results = results.concat(pageItems);
+
+            // Extract nextToken across possible shapes
+            nextToken =
+              (resp as any)?.nextToken ??
+              (resp as any)?.data?.nextToken ??
+              undefined;
+
+            console.debug(
+              `[Products] Page ${page} fetched: ${
+                pageItems.length
+              } items, nextToken: ${!!nextToken}`
+            );
+
+            if (!nextToken) break;
+            page += 1;
+
+            // Safety guard to avoid accidental infinite loops
+            if (page > 100) {
+              console.warn("[Products] Pagination aborted after 100 pages.");
+              break;
+            }
+          }
+
+          return results;
+        };
+
+        const allProducts = await listAllProductsForSupermarket(supermarketId);
+        if (allProducts.length > 0) {
+          console.log("Products Count (all pages):", allProducts.length);
+          setProducts(allProducts);
         } else {
           console.warn("No products found for this supermarket");
           setProducts([]);
@@ -212,9 +262,15 @@ const ShoppingList = ({
    * Generate product square stops instead of access point stops for better UX
    * Returns product squares directly with their sequential numbering
    */
-  const generateProductSquareStops = (productSquares: any[], entranceCoord: { row: number; col: number }, finalDestination: { row: number; col: number } | null) => {
+  const generateProductSquareStops = (
+    productSquares: any[],
+    entranceCoord: { row: number; col: number },
+    finalDestination: { row: number; col: number } | null
+  ) => {
     const cols = layoutData[0].length;
-    console.log(`🎯 [PRODUCT_STOPS] Generating product square stops for ${productSquares.length} squares`);
+    console.log(
+      `🎯 [PRODUCT_STOPS] Generating product square stops for ${productSquares.length} squares`
+    );
 
     // Check if we have optimized path data
     if (!optimizedPathData?.dist) {
@@ -232,21 +288,20 @@ const ShoppingList = ({
     const TSP_OPTIMAL_THRESHOLD = 15;
     const useHeuristic = productCoords.length > TSP_OPTIMAL_THRESHOLD;
 
-    console.log(`🎯 [PRODUCT_STOPS] Using ${useHeuristic ? 'heuristic' : 'optimal'} TSP algorithm for ${productCoords.length} product squares`);
+    console.log(
+      `🎯 [PRODUCT_STOPS] Using ${
+        useHeuristic ? "heuristic" : "optimal"
+      } TSP algorithm for ${productCoords.length} product squares`
+    );
 
     const optimalProductOrder = useHeuristic
       ? tspNearestNeighbor(
-        productCoords,
-        optimizedPathData.dist,
-        cols,
-        entranceCoord
-      )
-      : tspHeldKarp(
-        productCoords,
-        optimizedPathData.dist,
-        cols,
-        entranceCoord
-      );
+          productCoords,
+          optimizedPathData.dist,
+          cols,
+          entranceCoord
+        )
+      : tspHeldKarp(productCoords, optimizedPathData.dist, cols, entranceCoord);
 
     // Create ordered list of product stops
     console.log(`🎯 [PRODUCT_STOPS] Creating stops for visualization`);
@@ -263,21 +318,33 @@ const ShoppingList = ({
     ];
 
     // Add product squares in optimal order (skip entrance if it's included)
-    const productSquaresToProcess = optimalProductOrder.filter(coord =>
-      !(coord.row === entranceCoord.row && coord.col === entranceCoord.col)
+    const productSquaresToProcess = optimalProductOrder.filter(
+      (coord) =>
+        !(coord.row === entranceCoord.row && coord.col === entranceCoord.col)
     );
 
     for (let i = 0; i < productSquaresToProcess.length; i++) {
       const productCoord = productSquaresToProcess[i];
 
       // Find the corresponding product square
-      const productSquare = productSquares.find(square =>
-        square.row === productCoord.row && square.col === productCoord.col
+      const productSquare = productSquares.find(
+        (square) =>
+          square.row === productCoord.row && square.col === productCoord.col
       );
 
       if (productSquare) {
-        console.log(`🎯 [PRODUCT_STOPS] Adding product square stop ${i + 1}: (${productSquare.row}, ${productSquare.col}) with ${productSquare.products.length} products`);
-        console.log(`🎯 [PRODUCT_STOPS] Stop ${i + 1} products: [${productSquare.products.join(', ')}]`);
+        console.log(
+          `🎯 [PRODUCT_STOPS] Adding product square stop ${i + 1}: (${
+            productSquare.row
+          }, ${productSquare.col}) with ${
+            productSquare.products.length
+          } products`
+        );
+        console.log(
+          `🎯 [PRODUCT_STOPS] Stop ${
+            i + 1
+          } products: [${productSquare.products.join(", ")}]`
+        );
 
         stops.push({
           position: [productSquare.row, productSquare.col] as [number, number],
@@ -289,7 +356,9 @@ const ShoppingList = ({
 
     // Add final destination as last stop if available
     if (finalDestination) {
-      console.log(`🎯 [PRODUCT_STOPS] Adding final destination stop: (${finalDestination.row}, ${finalDestination.col})`);
+      console.log(
+        `🎯 [PRODUCT_STOPS] Adding final destination stop: (${finalDestination.row}, ${finalDestination.col})`
+      );
       stops.push({
         position: [finalDestination.row, finalDestination.col],
         stopNumber: 0,
@@ -301,7 +370,8 @@ const ShoppingList = ({
 
     console.log(`🎯 [PRODUCT_STOPS] Created ${stops.length} total stops`);
     return { stops, optimalProductOrder };
-  };  /**
+  };
+  /**
    * Helper function to check if a square is walkable (only empty squares are walkable)
    */
   const isWalkable = (row: number, col: number): boolean => {
@@ -312,8 +382,13 @@ const ShoppingList = ({
       col >= layoutData[0].length
     ) {
       // Only log out-of-bounds for first few calls to avoid spam
-      if (Math.random() < 0.001) { // Log ~0.1% of out-of-bounds checks
-        console.log(`🚫 [WALKABLE] Out of bounds check: (${row}, ${col}) - bounds: [0-${layoutData.length - 1}, 0-${layoutData[0]?.length - 1 || 0}]`);
+      if (Math.random() < 0.001) {
+        // Log ~0.1% of out-of-bounds checks
+        console.log(
+          `🚫 [WALKABLE] Out of bounds check: (${row}, ${col}) - bounds: [0-${
+            layoutData.length - 1
+          }, 0-${layoutData[0]?.length - 1 || 0}]`
+        );
       }
       return false;
     }
@@ -322,8 +397,11 @@ const ShoppingList = ({
     const walkable = squareType === "empty";
 
     // Log non-walkable squares occasionally to help debug
-    if (!walkable && Math.random() < 0.005) { // Log ~0.5% of non-walkable checks
-      console.log(`🚫 [WALKABLE] Non-walkable square at (${row}, ${col}): type = ${squareType}`);
+    if (!walkable && Math.random() < 0.005) {
+      // Log ~0.5% of non-walkable checks
+      console.log(
+        `🚫 [WALKABLE] Non-walkable square at (${row}, ${col}): type = ${squareType}`
+      );
     }
 
     return walkable;
@@ -487,7 +565,10 @@ const ShoppingList = ({
       walkableCol: number;
     }[] = [];
 
-    for (const [productIndex, accessPoints] of accessPointsByProduct.entries()) {
+    for (const [
+      productIndex,
+      accessPoints,
+    ] of accessPointsByProduct.entries()) {
       let bestAccessPoint = accessPoints[0];
       let bestDistance = Infinity;
 
@@ -515,11 +596,14 @@ const ShoppingList = ({
     }
 
     // Now group by access point coordinates and collect all product squares that use each access point
-    const accessPointGroups = new Map<string, {
-      accessPoint: { row: number; col: number; walkableIndex: number };
-      productSquares: typeof productSquares;
-      allProductIds: string[];
-    }>();
+    const accessPointGroups = new Map<
+      string,
+      {
+        accessPoint: { row: number; col: number; walkableIndex: number };
+        productSquares: typeof productSquares;
+        allProductIds: string[];
+      }
+    >();
 
     for (const bestAP of bestAccessPointsPerProduct) {
       const accessKey = `${bestAP.walkableRow},${bestAP.walkableCol}`;
@@ -529,15 +613,17 @@ const ShoppingList = ({
           accessPoint: {
             row: bestAP.walkableRow,
             col: bestAP.walkableCol,
-            walkableIndex: bestAP.walkableIndex
+            walkableIndex: bestAP.walkableIndex,
           },
           productSquares: [],
-          allProductIds: []
+          allProductIds: [],
         });
       }
 
       // Find the product square for this productIndex
-      const productSquare = productSquares.find(ps => ps.index === bestAP.productIndex);
+      const productSquare = productSquares.find(
+        (ps) => ps.index === bestAP.productIndex
+      );
       if (productSquare) {
         const group = accessPointGroups.get(accessKey)!;
         group.productSquares.push(productSquare);
@@ -546,10 +632,16 @@ const ShoppingList = ({
     }
 
     // Log the results for debugging
-    console.log(`🔍 [ACCESS_POINTS] Found ${accessPointGroups.size} unique access points:`);
+    console.log(
+      `🔍 [ACCESS_POINTS] Found ${accessPointGroups.size} unique access points:`
+    );
     for (const [accessKey, group] of accessPointGroups) {
-      console.log(`🔍 [ACCESS_POINTS] Access point (${group.accessPoint.row}, ${group.accessPoint.col}): ${group.productSquares.length} squares, ${group.allProductIds.length} products`);
-      console.log(`🔍 [ACCESS_POINTS] Products: [${group.allProductIds.join(', ')}]`);
+      console.log(
+        `🔍 [ACCESS_POINTS] Access point (${group.accessPoint.row}, ${group.accessPoint.col}): ${group.productSquares.length} squares, ${group.allProductIds.length} products`
+      );
+      console.log(
+        `🔍 [ACCESS_POINTS] Products: [${group.allProductIds.join(", ")}]`
+      );
     }
 
     return Array.from(accessPointGroups.values());
@@ -569,27 +661,47 @@ const ShoppingList = ({
     endCol: number,
     cols: number
   ) => {
-    console.log(`🔍 [PATH_GEN] Starting pathfinding from (${startRow}, ${startCol}) to (${endRow}, ${endCol})`);
+    console.log(
+      `🔍 [PATH_GEN] Starting pathfinding from (${startRow}, ${startCol}) to (${endRow}, ${endCol})`
+    );
 
     // Log square types at start and end positions
-    console.log(`🔍 [PATH_GEN] Start square type: ${layoutData[startRow]?.[startCol]?.type || 'OUT_OF_BOUNDS'}`);
-    console.log(`🔍 [PATH_GEN] End square type: ${layoutData[endRow]?.[endCol]?.type || 'OUT_OF_BOUNDS'}`);
-    console.log(`🔍 [PATH_GEN] Start walkable: ${isWalkable(startRow, startCol)}`);
+    console.log(
+      `🔍 [PATH_GEN] Start square type: ${
+        layoutData[startRow]?.[startCol]?.type || "OUT_OF_BOUNDS"
+      }`
+    );
+    console.log(
+      `🔍 [PATH_GEN] End square type: ${
+        layoutData[endRow]?.[endCol]?.type || "OUT_OF_BOUNDS"
+      }`
+    );
+    console.log(
+      `🔍 [PATH_GEN] Start walkable: ${isWalkable(startRow, startCol)}`
+    );
     console.log(`🔍 [PATH_GEN] End walkable: ${isWalkable(endRow, endCol)}`);
 
     // Check if there's a direct adjacency to avoid going through products
     const isAdjacent =
       Math.abs(startRow - endRow) + Math.abs(startCol - endCol) <= 1;
-    console.log(`🔍 [PATH_GEN] Is adjacent: ${isAdjacent} (distance: ${Math.abs(startRow - endRow) + Math.abs(startCol - endCol)})`);
+    console.log(
+      `🔍 [PATH_GEN] Is adjacent: ${isAdjacent} (distance: ${
+        Math.abs(startRow - endRow) + Math.abs(startCol - endCol)
+      })`
+    );
 
     if (isAdjacent) {
-      console.log(`✅ [PATH_GEN] Using direct adjacent path: [(${endRow}, ${endCol})]`);
+      console.log(
+        `✅ [PATH_GEN] Using direct adjacent path: [(${endRow}, ${endCol})]`
+      );
       return [[endRow, endCol]];
     }
 
     const startIndex = toIndex(startRow, startCol, cols);
     const endIndex = toIndex(endRow, endCol, cols);
-    console.log(`🔍 [PATH_GEN] Start index: ${startIndex}, End index: ${endIndex}, Grid cols: ${cols}`);
+    console.log(
+      `🔍 [PATH_GEN] Start index: ${startIndex}, End index: ${endIndex}, Grid cols: ${cols}`
+    );
 
     // Try to find a path only through walkable squares
     let visited = new Set<number>();
@@ -601,7 +713,9 @@ const ShoppingList = ({
       path: [],
     });
     visited.add(startIndex);
-    console.log(`🔍 [PATH_GEN] BFS initialized. Queue size: 1, Visited: [${startIndex}]`);
+    console.log(
+      `🔍 [PATH_GEN] BFS initialized. Queue size: 1, Visited: [${startIndex}]`
+    );
 
     let iterations = 0;
     const MAX_ITERATIONS = 10000; // Prevent infinite loops
@@ -614,14 +728,18 @@ const ShoppingList = ({
       const currentCol = index % cols;
 
       if (iterations % 1000 === 0) {
-        console.log(`🔍 [PATH_GEN] BFS iteration ${iterations}, queue size: ${queue.length}, visited size: ${visited.size}`);
-        console.log(`🔍 [PATH_GEN] Current position: (${currentRow}, ${currentCol}), path length: ${currentPath.length}`);
+        console.log(
+          `🔍 [PATH_GEN] BFS iteration ${iterations}, queue size: ${queue.length}, visited size: ${visited.size}`
+        );
+        console.log(
+          `🔍 [PATH_GEN] Current position: (${currentRow}, ${currentCol}), path length: ${currentPath.length}`
+        );
       }
 
       // Check all four directions (orthogonal neighbors)
       const directions = [
-        [0, 1],  // Right
-        [1, 0],  // Down
+        [0, 1], // Right
+        [1, 0], // Down
         [0, -1], // Left
         [-1, 0], // Up
       ];
@@ -632,7 +750,11 @@ const ShoppingList = ({
         const newIndex = toIndex(newRow, newCol, cols);
 
         // Check bounds first
-        const inBounds = newRow >= 0 && newRow < layoutData.length && newCol >= 0 && newCol < layoutData[0].length;
+        const inBounds =
+          newRow >= 0 &&
+          newRow < layoutData.length &&
+          newCol >= 0 &&
+          newCol < layoutData[0].length;
 
         if (!inBounds) {
           continue; // Skip out of bounds
@@ -648,9 +770,13 @@ const ShoppingList = ({
 
           // If we reached the destination
           if (newIndex === endIndex) {
-            console.log(`✅ [PATH_GEN] Destination reached! Path found with ${newPath.length} steps`);
+            console.log(
+              `✅ [PATH_GEN] Destination reached! Path found with ${newPath.length} steps`
+            );
             console.log(`✅ [PATH_GEN] Final path: ${JSON.stringify(newPath)}`);
-            console.log(`✅ [PATH_GEN] BFS completed in ${iterations} iterations`);
+            console.log(
+              `✅ [PATH_GEN] BFS completed in ${iterations} iterations`
+            );
             return newPath;
           }
 
@@ -659,18 +785,28 @@ const ShoppingList = ({
           queue.push({ index: newIndex, path: newPath });
         } else if (!isWalkableSquare && iterations < 10) {
           // Log blocking squares for first few iterations only
-          console.log(`🚫 [PATH_GEN] Blocked at (${newRow}, ${newCol}) - type: ${layoutData[newRow][newCol].type}`);
+          console.log(
+            `🚫 [PATH_GEN] Blocked at (${newRow}, ${newCol}) - type: ${layoutData[newRow][newCol].type}`
+          );
         }
       }
     }
 
     // If no path found through walkable squares, return empty path
     if (iterations >= MAX_ITERATIONS) {
-      console.error(`❌ [PATH_GEN] BFS exceeded maximum iterations (${MAX_ITERATIONS}) - possible infinite loop`);
-      console.error(`❌ [PATH_GEN] Final queue size: ${queue.length}, visited size: ${visited.size}`);
+      console.error(
+        `❌ [PATH_GEN] BFS exceeded maximum iterations (${MAX_ITERATIONS}) - possible infinite loop`
+      );
+      console.error(
+        `❌ [PATH_GEN] Final queue size: ${queue.length}, visited size: ${visited.size}`
+      );
     } else {
-      console.error(`❌ [PATH_GEN] No walkable path found from (${startRow}, ${startCol}) to (${endRow}, ${endCol})`);
-      console.error(`❌ [PATH_GEN] BFS completed in ${iterations} iterations, explored ${visited.size} squares`);
+      console.error(
+        `❌ [PATH_GEN] No walkable path found from (${startRow}, ${startCol}) to (${endRow}, ${endCol})`
+      );
+      console.error(
+        `❌ [PATH_GEN] BFS completed in ${iterations} iterations, explored ${visited.size} squares`
+      );
     }
 
     // Log surrounding squares for debugging
@@ -679,8 +815,18 @@ const ShoppingList = ({
       for (let dc = -1; dc <= 1; dc++) {
         const r = startRow + dr;
         const c = startCol + dc;
-        if (r >= 0 && r < layoutData.length && c >= 0 && c < layoutData[0].length) {
-          console.log(`   (${r}, ${c}): ${layoutData[r][c].type} - walkable: ${isWalkable(r, c)}`);
+        if (
+          r >= 0 &&
+          r < layoutData.length &&
+          c >= 0 &&
+          c < layoutData[0].length
+        ) {
+          console.log(
+            `   (${r}, ${c}): ${layoutData[r][c].type} - walkable: ${isWalkable(
+              r,
+              c
+            )}`
+          );
         }
       }
     }
@@ -690,8 +836,18 @@ const ShoppingList = ({
       for (let dc = -1; dc <= 1; dc++) {
         const r = endRow + dr;
         const c = endCol + dc;
-        if (r >= 0 && r < layoutData.length && c >= 0 && c < layoutData[0].length) {
-          console.log(`   (${r}, ${c}): ${layoutData[r][c].type} - walkable: ${isWalkable(r, c)}`);
+        if (
+          r >= 0 &&
+          r < layoutData.length &&
+          c >= 0 &&
+          c < layoutData[0].length
+        ) {
+          console.log(
+            `   (${r}, ${c}): ${layoutData[r][c].type} - walkable: ${isWalkable(
+              r,
+              c
+            )}`
+          );
         }
       }
     }
@@ -703,24 +859,36 @@ const ShoppingList = ({
    * Remove duplicate consecutive points from a path
    */
   const removeDuplicates = (path: number[][]) => {
-    console.log(`🧹 [PATH_CLEAN] Starting duplicate removal. Input path length: ${path.length}`);
-    console.log(`🧹 [PATH_CLEAN] Input path: ${JSON.stringify(path.slice(0, 10))}${path.length > 10 ? '...' : ''}`);
+    console.log(
+      `🧹 [PATH_CLEAN] Starting duplicate removal. Input path length: ${path.length}`
+    );
+    console.log(
+      `🧹 [PATH_CLEAN] Input path: ${JSON.stringify(path.slice(0, 10))}${
+        path.length > 10 ? "..." : ""
+      }`
+    );
 
     const cleaned = path.filter((point, index, array) => {
       // Keep the point if it's the first one or different from the previous one
-      const keep = index === 0 ||
+      const keep =
+        index === 0 ||
         point[0] !== array[index - 1][0] ||
         point[1] !== array[index - 1][1];
 
-      if (!keep && index < 20) { // Log first 20 duplicates only
-        console.log(`🧹 [PATH_CLEAN] Removing duplicate at index ${index}: (${point[0]}, ${point[1]})`);
+      if (!keep && index < 20) {
+        // Log first 20 duplicates only
+        console.log(
+          `🧹 [PATH_CLEAN] Removing duplicate at index ${index}: (${point[0]}, ${point[1]})`
+        );
       }
 
       return keep;
     });
 
     const duplicatesRemoved = path.length - cleaned.length;
-    console.log(`✅ [PATH_CLEAN] Duplicate removal complete. Removed ${duplicatesRemoved} duplicates. Final length: ${cleaned.length}`);
+    console.log(
+      `✅ [PATH_CLEAN] Duplicate removal complete. Removed ${duplicatesRemoved} duplicates. Final length: ${cleaned.length}`
+    );
 
     return cleaned;
   };
@@ -729,7 +897,9 @@ const ShoppingList = ({
    * Validate the generated path to ensure all points are walkable
    */
   const validatePath = (path: number[][]) => {
-    console.log(`🔍 [PATH_VALIDATE] Starting path validation. Path length: ${path.length}`);
+    console.log(
+      `🔍 [PATH_VALIDATE] Starting path validation. Path length: ${path.length}`
+    );
 
     if (path.length === 0) {
       console.warn(`⚠️ [PATH_VALIDATE] Empty path provided for validation`);
@@ -742,23 +912,37 @@ const ShoppingList = ({
       const walkable = isWalkable(row, col);
 
       if (!walkable) {
-        const squareType = (row >= 0 && row < layoutData.length && col >= 0 && col < layoutData[0].length)
-          ? layoutData[row][col].type
-          : 'OUT_OF_BOUNDS';
-        console.error(`❌ [PATH_VALIDATE] Invalid point at index ${index}: (${row}, ${col}) - type: ${squareType}`);
+        const squareType =
+          row >= 0 &&
+          row < layoutData.length &&
+          col >= 0 &&
+          col < layoutData[0].length
+            ? layoutData[row][col].type
+            : "OUT_OF_BOUNDS";
+        console.error(
+          `❌ [PATH_VALIDATE] Invalid point at index ${index}: (${row}, ${col}) - type: ${squareType}`
+        );
       }
 
       return !walkable;
     });
 
     if (invalidPoints.length > 0) {
-      console.error(`❌ [PATH_VALIDATE] Found ${invalidPoints.length} non-walkable points in path:`);
+      console.error(
+        `❌ [PATH_VALIDATE] Found ${invalidPoints.length} non-walkable points in path:`
+      );
       invalidPoints.forEach((point, index) => {
         const [row, col] = point;
-        const squareType = (row >= 0 && row < layoutData.length && col >= 0 && col < layoutData[0].length)
-          ? layoutData[row][col].type
-          : 'OUT_OF_BOUNDS';
-        console.error(`   ${index + 1}. (${row}, ${col}) - type: ${squareType}`);
+        const squareType =
+          row >= 0 &&
+          row < layoutData.length &&
+          col >= 0 &&
+          col < layoutData[0].length
+            ? layoutData[row][col].type
+            : "OUT_OF_BOUNDS";
+        console.error(
+          `   ${index + 1}. (${row}, ${col}) - type: ${squareType}`
+        );
       });
 
       // Filter out non-walkable squares
@@ -767,41 +951,64 @@ const ShoppingList = ({
         return isWalkable(row, col);
       });
 
-      console.warn(`🔧 [PATH_VALIDATE] Filtered out invalid points. Original length: ${path.length}, Valid length: ${validPath.length}`);
+      console.warn(
+        `🔧 [PATH_VALIDATE] Filtered out invalid points. Original length: ${path.length}, Valid length: ${validPath.length}`
+      );
 
       // Log the continuity of the filtered path
       for (let i = 1; i < validPath.length; i++) {
         const prev = validPath[i - 1];
         const curr = validPath[i];
-        const distance = Math.abs(prev[0] - curr[0]) + Math.abs(prev[1] - curr[1]);
+        const distance =
+          Math.abs(prev[0] - curr[0]) + Math.abs(prev[1] - curr[1]);
         if (distance > 1) {
-          console.warn(`⚠️ [PATH_VALIDATE] Gap detected between points ${i - 1} and ${i}: (${prev[0]}, ${prev[1]}) to (${curr[0]}, ${curr[1]}) - distance: ${distance}`);
+          console.warn(
+            `⚠️ [PATH_VALIDATE] Gap detected between points ${
+              i - 1
+            } and ${i}: (${prev[0]}, ${prev[1]}) to (${curr[0]}, ${
+              curr[1]
+            }) - distance: ${distance}`
+          );
         }
       }
 
       return validPath;
     }
 
-    console.log(`✅ [PATH_VALIDATE] Path validation passed. All ${path.length} points are walkable.`);
+    console.log(
+      `✅ [PATH_VALIDATE] Path validation passed. All ${path.length} points are walkable.`
+    );
 
     // Validate path continuity
     let discontinuities = 0;
     for (let i = 1; i < path.length; i++) {
       const prev = path[i - 1];
       const curr = path[i];
-      const distance = Math.abs(prev[0] - curr[0]) + Math.abs(prev[1] - curr[1]);
+      const distance =
+        Math.abs(prev[0] - curr[0]) + Math.abs(prev[1] - curr[1]);
       if (distance > 1) {
         discontinuities++;
-        if (discontinuities <= 5) { // Log first 5 discontinuities only
-          console.warn(`⚠️ [PATH_VALIDATE] Discontinuity ${discontinuities} between points ${i - 1} and ${i}: (${prev[0]}, ${prev[1]}) to (${curr[0]}, ${curr[1]}) - distance: ${distance}`);
+        if (discontinuities <= 5) {
+          // Log first 5 discontinuities only
+          console.warn(
+            `⚠️ [PATH_VALIDATE] Discontinuity ${discontinuities} between points ${
+              i - 1
+            } and ${i}: (${prev[0]}, ${prev[1]}) to (${curr[0]}, ${
+              curr[1]
+            }) - distance: ${distance}`
+          );
         }
       }
     }
 
     if (discontinuities > 0) {
-      console.warn(`⚠️ [PATH_VALIDATE] Found ${discontinuities} discontinuities in path (gaps > 1 square)`);
+      console.warn(
+        `⚠️ [PATH_VALIDATE] Found ${discontinuities} discontinuities in path (gaps > 1 square)`
+      );
     } else {
-      console.log(`✅ [PATH_VALIDATE] Path continuity validated - all steps are adjacent`);
+      console.log(
+        `✅ [PATH_VALIDATE] Path continuity validated - all steps are adjacent`
+      );
     }
 
     return path;
@@ -813,10 +1020,24 @@ const ShoppingList = ({
   const generateOptimizedPath = () => {
     console.log(`🚀 [INIT] ===============================================`);
     console.log(`🚀 [INIT] Starting generateOptimizedPath function`);
-    console.log(`🚀 [INIT] Layout data dimensions: ${layoutData.length}x${layoutData[0]?.length || 0}`);
-    console.log(`🚀 [INIT] Selected products count: ${selectedProducts.length}`);
-    console.log(`🚀 [INIT] Selected products: ${JSON.stringify(selectedProducts.slice(0, 10))}${selectedProducts.length > 10 ? '...' : ''}`);
-    console.log(`🚀 [INIT] Has path data: ${!!(optimizedPathData?.dist && optimizedPathData?.next)}`);
+    console.log(
+      `🚀 [INIT] Layout data dimensions: ${layoutData.length}x${
+        layoutData[0]?.length || 0
+      }`
+    );
+    console.log(
+      `🚀 [INIT] Selected products count: ${selectedProducts.length}`
+    );
+    console.log(
+      `🚀 [INIT] Selected products: ${JSON.stringify(
+        selectedProducts.slice(0, 10)
+      )}${selectedProducts.length > 10 ? "..." : ""}`
+    );
+    console.log(
+      `🚀 [INIT] Has path data: ${!!(
+        optimizedPathData?.dist && optimizedPathData?.next
+      )}`
+    );
 
     if (layoutData.length === 0) {
       console.error(`❌ [INIT] Layout data is empty! Cannot generate path.`);
@@ -831,8 +1052,16 @@ const ShoppingList = ({
     // If we have precomputed path data, use it for optimal routing
     if (optimizedPathData?.dist && optimizedPathData?.next) {
       console.log(`✅ [INIT] Using precomputed path data for optimization`);
-      console.log(`✅ [INIT] Distance matrix size: ${optimizedPathData.dist.length}x${optimizedPathData.dist[0]?.length || 0}`);
-      console.log(`✅ [INIT] Next hop matrix size: ${optimizedPathData.next.length}x${optimizedPathData.next[0]?.length || 0}`);
+      console.log(
+        `✅ [INIT] Distance matrix size: ${optimizedPathData.dist.length}x${
+          optimizedPathData.dist[0]?.length || 0
+        }`
+      );
+      console.log(
+        `✅ [INIT] Next hop matrix size: ${optimizedPathData.next.length}x${
+          optimizedPathData.next[0]?.length || 0
+        }`
+      );
 
       const cols = layoutData[0].length;
       console.log(`✅ [INIT] Grid columns: ${cols}`);
@@ -842,9 +1071,25 @@ const ShoppingList = ({
       const { entranceCoord, cashRegisterCoord, exitCoord } =
         findKeyLocations();
 
-      console.log(`🔍 [INIT] Entrance: ${entranceCoord ? `(${entranceCoord.row}, ${entranceCoord.col})` : 'NOT FOUND'}`);
-      console.log(`🔍 [INIT] Cash register: ${cashRegisterCoord ? `(${cashRegisterCoord.row}, ${cashRegisterCoord.col})` : 'NOT FOUND'}`);
-      console.log(`🔍 [INIT] Exit: ${exitCoord ? `(${exitCoord.row}, ${exitCoord.col})` : 'NOT FOUND'}`);
+      console.log(
+        `🔍 [INIT] Entrance: ${
+          entranceCoord
+            ? `(${entranceCoord.row}, ${entranceCoord.col})`
+            : "NOT FOUND"
+        }`
+      );
+      console.log(
+        `🔍 [INIT] Cash register: ${
+          cashRegisterCoord
+            ? `(${cashRegisterCoord.row}, ${cashRegisterCoord.col})`
+            : "NOT FOUND"
+        }`
+      );
+      console.log(
+        `🔍 [INIT] Exit: ${
+          exitCoord ? `(${exitCoord.row}, ${exitCoord.col})` : "NOT FOUND"
+        }`
+      );
 
       if (!entranceCoord) {
         console.error(`❌ [INIT] No entrance found in layout! Cannot proceed.`);
@@ -853,15 +1098,21 @@ const ShoppingList = ({
 
       const finalDestination = cashRegisterCoord || exitCoord;
       if (!finalDestination) {
-        console.warn(`⚠️ [INIT] No cash register or exit found - will end at last product`);
+        console.warn(
+          `⚠️ [INIT] No cash register or exit found - will end at last product`
+        );
       } else {
-        console.log(`✅ [INIT] Final destination: (${finalDestination.row}, ${finalDestination.col})`);
+        console.log(
+          `✅ [INIT] Final destination: (${finalDestination.row}, ${finalDestination.col})`
+        );
       }
 
       // Step 2: Find product squares that contain selected products
       console.log(`🔍 [INIT] Step 2: Finding product squares...`);
       const productSquares = findProductSquares();
-      console.log(`🔍 [INIT] Found ${productSquares.length} product squares containing selected items`);
+      console.log(
+        `🔍 [INIT] Found ${productSquares.length} product squares containing selected items`
+      );
 
       // If no product squares found, create a simple path
       if (productSquares.length === 0) {
@@ -923,7 +1174,9 @@ const ShoppingList = ({
       }
 
       // Step 3-7: Use new product square approach instead of access points
-      console.log(`🎯 [NEW_APPROACH] Switching to product square stops instead of access points`);
+      console.log(
+        `🎯 [NEW_APPROACH] Switching to product square stops instead of access points`
+      );
 
       // Notify user about algorithm choice for large lists
       const TSP_OPTIMAL_THRESHOLD = 15;
@@ -938,15 +1191,18 @@ const ShoppingList = ({
       }
 
       // Generate product square stops with TSP optimization
-      const { stops: productStopsArray, optimalProductOrder } = generateProductSquareStops(
-        productSquares,
-        entranceCoord,
-        finalDestination || null
-      );
+      const { stops: productStopsArray, optimalProductOrder } =
+        generateProductSquareStops(
+          productSquares,
+          entranceCoord,
+          finalDestination || null
+        );
 
       // Set the product stops for visualization
-      setProductStops(productStopsArray);      // For the walkable path, we need access points to navigate around product squares
-      console.log(`🚀 [PATH_GEN] Generating walkable path through access points while displaying numbers on product squares`);
+      setProductStops(productStopsArray); // For the walkable path, we need access points to navigate around product squares
+      console.log(
+        `🚀 [PATH_GEN] Generating walkable path through access points while displaying numbers on product squares`
+      );
 
       // Find access points for navigation purposes (but don't display numbers on them)
       const accessPoints = findProductAccessPoints(productSquares);
@@ -975,18 +1231,23 @@ const ShoppingList = ({
       for (const productCoord of optimalProductOrder) {
         // Find access points for this specific product square
         const productIndex = toIndex(productCoord.row, productCoord.col, cols);
-        const productAccessPoints = accessPoints.filter(ap => ap.productIndex === productIndex);
+        const productAccessPoints = accessPoints.filter(
+          (ap) => ap.productIndex === productIndex
+        );
 
         if (productAccessPoints.length > 0) {
           // Choose the best access point (closest to entrance for simplicity)
           let bestAccessPoint = productAccessPoints[0];
           let bestDistance = Infinity;
 
-          const entranceIndex = entranceCoord ? toIndex(entranceCoord.row, entranceCoord.col, cols) : -1;
+          const entranceIndex = entranceCoord
+            ? toIndex(entranceCoord.row, entranceCoord.col, cols)
+            : -1;
 
           if (entranceIndex !== -1 && optimizedPathData?.dist) {
             for (const ap of productAccessPoints) {
-              const distance = optimizedPathData.dist[entranceIndex][ap.walkableIndex];
+              const distance =
+                optimizedPathData.dist[entranceIndex][ap.walkableIndex];
               if (distance < bestDistance) {
                 bestDistance = distance;
                 bestAccessPoint = ap;
@@ -996,38 +1257,64 @@ const ShoppingList = ({
 
           orderedAccessPoints.push({
             row: bestAccessPoint.walkableRow,
-            col: bestAccessPoint.walkableCol
+            col: bestAccessPoint.walkableCol,
           });
         }
       }
 
       // Step 8: Generate a path through walkable access points (for navigation)
       console.log(`🚀 [PATH_MAIN] Starting main path generation phase`);
-      console.log(`🚀 [PATH_MAIN] Entrance access point: ${entranceAccessPoint ? `(${entranceAccessPoint.row}, ${entranceAccessPoint.col})` : 'None'}`);
-      console.log(`🚀 [PATH_MAIN] Destination access point: ${destinationAccessPoint ? `(${destinationAccessPoint.row}, ${destinationAccessPoint.col})` : 'None'}`);
-      console.log(`🚀 [PATH_MAIN] Ordered access points length: ${orderedAccessPoints.length}`);
+      console.log(
+        `🚀 [PATH_MAIN] Entrance access point: ${
+          entranceAccessPoint
+            ? `(${entranceAccessPoint.row}, ${entranceAccessPoint.col})`
+            : "None"
+        }`
+      );
+      console.log(
+        `🚀 [PATH_MAIN] Destination access point: ${
+          destinationAccessPoint
+            ? `(${destinationAccessPoint.row}, ${destinationAccessPoint.col})`
+            : "None"
+        }`
+      );
+      console.log(
+        `🚀 [PATH_MAIN] Ordered access points length: ${orderedAccessPoints.length}`
+      );
 
       const walkablePath: number[][] = [];
 
       // Start with a walkable square adjacent to entrance
       if (entranceAccessPoint) {
         walkablePath.push([entranceAccessPoint.row, entranceAccessPoint.col]);
-        console.log(`🚀 [PATH_MAIN] Added entrance access point to path: (${entranceAccessPoint.row}, ${entranceAccessPoint.col})`);
+        console.log(
+          `🚀 [PATH_MAIN] Added entrance access point to path: (${entranceAccessPoint.row}, ${entranceAccessPoint.col})`
+        );
       } else {
         console.warn(`⚠️ [PATH_MAIN] No entrance access point available`);
       }
 
       let lastPosition = entranceAccessPoint || entranceCoord;
-      console.log(`🚀 [PATH_MAIN] Starting position: (${lastPosition.row}, ${lastPosition.col})`);
+      console.log(
+        `🚀 [PATH_MAIN] Starting position: (${lastPosition.row}, ${lastPosition.col})`
+      );
 
       // Generate paths between access points
-      console.log(`🚀 [PATH_MAIN] Generating paths between ${orderedAccessPoints.length} access points`);
+      console.log(
+        `🚀 [PATH_MAIN] Generating paths between ${orderedAccessPoints.length} access points`
+      );
       for (let i = 0; i < orderedAccessPoints.length; i++) {
         const accessPoint = orderedAccessPoints[i];
-        console.log(`🚀 [PATH_MAIN] === Processing access point ${i + 1}/${orderedAccessPoints.length}: (${accessPoint.row}, ${accessPoint.col}) ===`);
+        console.log(
+          `🚀 [PATH_MAIN] === Processing access point ${i + 1}/${
+            orderedAccessPoints.length
+          }: (${accessPoint.row}, ${accessPoint.col}) ===`
+        );
 
         if (lastPosition) {
-          console.log(`🚀 [PATH_MAIN] Generating path from (${lastPosition.row}, ${lastPosition.col}) to (${accessPoint.row}, ${accessPoint.col})`);
+          console.log(
+            `🚀 [PATH_MAIN] Generating path from (${lastPosition.row}, ${lastPosition.col}) to (${accessPoint.row}, ${accessPoint.col})`
+          );
 
           const pathSegment = generatePathBetweenPoints(
             lastPosition.row,
@@ -1037,27 +1324,51 @@ const ShoppingList = ({
             cols
           );
 
-          console.log(`🚀 [PATH_MAIN] Path segment result: ${pathSegment.length} steps`);
+          console.log(
+            `🚀 [PATH_MAIN] Path segment result: ${pathSegment.length} steps`
+          );
           if (pathSegment.length > 0) {
-            console.log(`🚀 [PATH_MAIN] Adding ${pathSegment.length} steps to walkable path`);
-            console.log(`🚀 [PATH_MAIN] Segment: ${JSON.stringify(pathSegment.slice(0, 5))}${pathSegment.length > 5 ? '...' : ''}`);
+            console.log(
+              `🚀 [PATH_MAIN] Adding ${pathSegment.length} steps to walkable path`
+            );
+            console.log(
+              `🚀 [PATH_MAIN] Segment: ${JSON.stringify(
+                pathSegment.slice(0, 5)
+              )}${pathSegment.length > 5 ? "..." : ""}`
+            );
             walkablePath.push(...pathSegment);
-            console.log(`🚀 [PATH_MAIN] Total walkable path length now: ${walkablePath.length}`);
+            console.log(
+              `🚀 [PATH_MAIN] Total walkable path length now: ${walkablePath.length}`
+            );
           } else {
-            console.error(`❌ [PATH_MAIN] Failed to generate path segment ${i + 1}! No walkable path found.`);
+            console.error(
+              `❌ [PATH_MAIN] Failed to generate path segment ${
+                i + 1
+              }! No walkable path found.`
+            );
           }
         } else {
-          console.error(`❌ [PATH_MAIN] No last position available for access point ${i + 1}`);
+          console.error(
+            `❌ [PATH_MAIN] No last position available for access point ${
+              i + 1
+            }`
+          );
         }
 
         lastPosition = { row: accessPoint.row, col: accessPoint.col };
-        console.log(`🚀 [PATH_MAIN] Updated last position to: (${lastPosition.row}, ${lastPosition.col})`);
+        console.log(
+          `🚀 [PATH_MAIN] Updated last position to: (${lastPosition.row}, ${lastPosition.col})`
+        );
       }
 
       // Add path to final destination access point if available
       if (destinationAccessPoint && lastPosition) {
-        console.log(`🚀 [PATH_MAIN] === Generating final path to destination ===`);
-        console.log(`🚀 [PATH_MAIN] From (${lastPosition.row}, ${lastPosition.col}) to destination (${destinationAccessPoint.row}, ${destinationAccessPoint.col})`);
+        console.log(
+          `🚀 [PATH_MAIN] === Generating final path to destination ===`
+        );
+        console.log(
+          `🚀 [PATH_MAIN] From (${lastPosition.row}, ${lastPosition.col}) to destination (${destinationAccessPoint.row}, ${destinationAccessPoint.col})`
+        );
 
         const pathToDestination = generatePathBetweenPoints(
           lastPosition.row,
@@ -1067,41 +1378,81 @@ const ShoppingList = ({
           cols
         );
 
-        console.log(`🚀 [PATH_MAIN] Destination path result: ${pathToDestination.length} steps`);
+        console.log(
+          `🚀 [PATH_MAIN] Destination path result: ${pathToDestination.length} steps`
+        );
         if (pathToDestination.length > 0) {
-          console.log(`🚀 [PATH_MAIN] Adding final ${pathToDestination.length} steps to walkable path`);
+          console.log(
+            `🚀 [PATH_MAIN] Adding final ${pathToDestination.length} steps to walkable path`
+          );
           walkablePath.push(...pathToDestination);
-          console.log(`🚀 [PATH_MAIN] Final total walkable path length: ${walkablePath.length}`);
+          console.log(
+            `🚀 [PATH_MAIN] Final total walkable path length: ${walkablePath.length}`
+          );
         } else {
-          console.error(`❌ [PATH_MAIN] Failed to generate path to destination!`);
+          console.error(
+            `❌ [PATH_MAIN] Failed to generate path to destination!`
+          );
         }
       } else if (!destinationAccessPoint) {
-        console.warn(`⚠️ [PATH_MAIN] No destination access point available - skipping final path`);
+        console.warn(
+          `⚠️ [PATH_MAIN] No destination access point available - skipping final path`
+        );
       } else {
-        console.warn(`⚠️ [PATH_MAIN] No last position available for destination path`);
+        console.warn(
+          `⚠️ [PATH_MAIN] No last position available for destination path`
+        );
       }
 
       // Step 9: Product stops were already created in generateProductSquareStops()
-      console.log(`📍 [STOPS_GEN] Product stops already created: ${productStopsArray.length} total stops`);
-      console.log(`📍 [STOPS_GEN] Stops summary: Start + ${productStopsArray.filter((s: ProductStop) => !s.isSpecial).length} product squares + ${productStopsArray.filter((s: ProductStop) => s.isSpecial && s.label === 'Finish').length > 0 ? 'Finish' : 'No finish'}`);
+      console.log(
+        `📍 [STOPS_GEN] Product stops already created: ${productStopsArray.length} total stops`
+      );
+      console.log(
+        `📍 [STOPS_GEN] Stops summary: Start + ${
+          productStopsArray.filter((s: ProductStop) => !s.isSpecial).length
+        } product squares + ${
+          productStopsArray.filter(
+            (s: ProductStop) => s.isSpecial && s.label === "Finish"
+          ).length > 0
+            ? "Finish"
+            : "No finish"
+        }`
+      );
 
       // Step 10: Remove duplicates and validate the path
       console.log(`🏁 [PATH_FINAL] Starting final path processing`);
-      console.log(`🏁 [PATH_FINAL] Raw walkable path length: ${walkablePath.length}`);
-      console.log(`🏁 [PATH_FINAL] Raw path preview: ${JSON.stringify(walkablePath.slice(0, 10))}${walkablePath.length > 10 ? '...' : ''}`);
+      console.log(
+        `🏁 [PATH_FINAL] Raw walkable path length: ${walkablePath.length}`
+      );
+      console.log(
+        `🏁 [PATH_FINAL] Raw path preview: ${JSON.stringify(
+          walkablePath.slice(0, 10)
+        )}${walkablePath.length > 10 ? "..." : ""}`
+      );
 
       const deduplicatedPath = removeDuplicates(walkablePath);
       const validatedPath = validatePath(deduplicatedPath);
 
-      console.log(`🏁 [PATH_FINAL] Final validated path length: ${validatedPath.length}`);
-      console.log(`🏁 [PATH_FINAL] Final path preview: ${JSON.stringify(validatedPath.slice(0, 10))}${validatedPath.length > 10 ? '...' : ''}`);
+      console.log(
+        `🏁 [PATH_FINAL] Final validated path length: ${validatedPath.length}`
+      );
+      console.log(
+        `🏁 [PATH_FINAL] Final path preview: ${JSON.stringify(
+          validatedPath.slice(0, 10)
+        )}${validatedPath.length > 10 ? "..." : ""}`
+      );
 
       // Log path statistics
       if (validatedPath.length > 0) {
         const startPoint = validatedPath[0];
         const endPoint = validatedPath[validatedPath.length - 1];
-        console.log(`🏁 [PATH_FINAL] Path starts at: (${startPoint[0]}, ${startPoint[1]})`);
-        console.log(`🏁 [PATH_FINAL] Path ends at: (${endPoint[0]}, ${endPoint[1]})`);
+        console.log(
+          `🏁 [PATH_FINAL] Path starts at: (${startPoint[0]}, ${startPoint[1]})`
+        );
+        console.log(
+          `🏁 [PATH_FINAL] Path ends at: (${endPoint[0]}, ${endPoint[1]})`
+        );
 
         // Calculate path efficiency
         const rawLength = walkablePath.length;
@@ -1110,19 +1461,32 @@ const ShoppingList = ({
         const invalidPointsRemoved = deduplicatedPath.length - finalLength;
 
         console.log(`📊 [PATH_STATS] Raw path: ${rawLength} points`);
-        console.log(`📊 [PATH_STATS] Duplicates removed: ${duplicatesRemoved} points`);
-        console.log(`📊 [PATH_STATS] Invalid points removed: ${invalidPointsRemoved} points`);
+        console.log(
+          `📊 [PATH_STATS] Duplicates removed: ${duplicatesRemoved} points`
+        );
+        console.log(
+          `📊 [PATH_STATS] Invalid points removed: ${invalidPointsRemoved} points`
+        );
         console.log(`📊 [PATH_STATS] Final path: ${finalLength} points`);
-        console.log(`📊 [PATH_STATS] Path efficiency: ${((finalLength / rawLength) * 100).toFixed(1)}%`);
+        console.log(
+          `📊 [PATH_STATS] Path efficiency: ${(
+            (finalLength / rawLength) *
+            100
+          ).toFixed(1)}%`
+        );
       } else {
-        console.error(`❌ [PATH_FINAL] Final path is empty! This indicates a critical pathfinding failure.`);
+        console.error(
+          `❌ [PATH_FINAL] Final path is empty! This indicates a critical pathfinding failure.`
+        );
       }
 
       setOptimizedPath(validatedPath);
       setShowOptimizedPath(true);
 
       console.log(`✅ [PATH_COMPLETE] Path generation completed successfully!`);
-      console.log(`✅ [PATH_COMPLETE] Generated optimized path with ${validatedPath.length} steps and ${productStopsArray.length} stops`);
+      console.log(
+        `✅ [PATH_COMPLETE] Generated optimized path with ${validatedPath.length} steps and ${productStopsArray.length} stops`
+      );
       console.log(`✅ [PATH_COMPLETE] Path generation phase finished`);
       console.log(`===============================================`);
     } else {
